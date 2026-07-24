@@ -71,23 +71,6 @@ cargo test
 8. **Right-click** any item for file operations (open, copy, rename, trash, etc.)
 9. Click the **gear icon** to change color schemes
 
-## Roadmap
-
-### Now
-- Stabilize cross-platform builds and release packaging
-- Bug fixes for filesystem watcher edge cases
-
-### Next
-- Scan progress bar (percentage-based)
-- Persistent settings (remember last color scheme, window size)
-- Keyboard navigation for the treemap
-- Search / filter files by name or extension
-
-### Future
-- Duplicate file detection
-- Export reports (CSV / HTML)
-- Custom color scheme editor
-
 ## Dependencies
 
 | Crate | Purpose |
