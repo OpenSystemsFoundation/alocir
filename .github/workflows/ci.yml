@@ -58,14 +58,16 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           chmod +x scripts/build-macos.sh
-          ./scripts/build-macos.sh
+          # Build a universal binary so the app runs natively on both Apple
+          # Silicon and Intel Macs.
+          ./scripts/build-macos.sh --universal
           # Package the .app on the macOS runner with ditto so the executable
           # bit, extended attributes, symlinks and ad-hoc code signature are
           # preserved. upload-artifact strips the executable bit and re-zipping
           # the bundle on Linux invalidates the signature, which makes macOS
           # report the app as "damaged" (the Gatekeeper override can't fix a
           # broken signature). Uploading a ready-made zip avoids that round-trip.
-          ditto -c -k --keepParent target/release/Alocir.app alocir-macos-arm64.zip
+          ditto -c -k --keepParent target/release/Alocir.app alocir-macos-universal.zip
 
       - name: Upload artifact (Linux)
         if: runner.os == 'Linux'
@@ -85,8 +87,8 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: alocir-macos-arm64
-          path: alocir-macos-arm64.zip
+          name: alocir-macos-universal
+          path: alocir-macos-universal.zip
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -124,11 +126,12 @@ jobs:
           zip ../../release/alocir-windows-x86_64.zip alocir.exe
           cd ../..
 
-          # macOS — the zip was already produced on the macOS runner with ditto
-          # (preserving the executable bit and ad-hoc code signature), so use it
-          # as-is. Do NOT unpack and re-zip here: repackaging the .app on Linux
-          # breaks the signature and macOS then refuses to open the app.
-          cp artifacts/alocir-macos-arm64/alocir-macos-arm64.zip release/alocir-macos-arm64.zip
+          # macOS — the universal zip was already produced on the macOS runner
+          # with ditto (preserving the executable bit and ad-hoc code
+          # signature), so use it as-is. Do NOT unpack and re-zip here:
+          # repackaging the .app on Linux breaks the signature and macOS then
+          # refuses to open the app.
+          cp artifacts/alocir-macos-universal/alocir-macos-universal.zip release/alocir-macos-universal.zip
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

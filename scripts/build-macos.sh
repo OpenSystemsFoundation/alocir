@@ -2,25 +2,45 @@
 set -euo pipefail
 
 # Build a signed macOS .app bundle for Alocir.
-# Usage: ./scripts/build-macos.sh [--sign IDENTITY]
+# Usage: ./scripts/build-macos.sh [--sign IDENTITY] [--universal]
 #   --sign IDENTITY   Code-sign with the given identity (e.g. "Developer ID Application: ...")
 #                     Defaults to ad-hoc signing (-) if omitted.
+#   --universal       Build a universal binary (arm64 + x86_64) so the app runs
+#                     natively on both Apple Silicon and Intel Macs. Without this
+#                     flag the app is built for the host architecture only.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUILD_DIR="$PROJECT_DIR/target/release"
 BUNDLE_DIR="$BUILD_DIR/Alocir.app"
 SIGN_IDENTITY="-"
+UNIVERSAL=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --sign) SIGN_IDENTITY="$2"; shift 2 ;;
+        --universal) UNIVERSAL=true; shift ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
 done
 
-echo "==> Building release binary..."
-cargo build --release
+if $UNIVERSAL; then
+    echo "==> Building universal binary (arm64 + x86_64)..."
+    rustup target add aarch64-apple-darwin x86_64-apple-darwin
+    cargo build --release --target aarch64-apple-darwin
+    cargo build --release --target x86_64-apple-darwin
+    # Fuse the two architecture slices into a single universal binary.
+    mkdir -p "$BUILD_DIR"
+    lipo -create \
+        "$PROJECT_DIR/target/aarch64-apple-darwin/release/alocir" \
+        "$PROJECT_DIR/target/x86_64-apple-darwin/release/alocir" \
+        -output "$BUILD_DIR/alocir"
+    echo "    Universal binary architectures:"
+    lipo -archs "$BUILD_DIR/alocir" | sed 's/^/      /'
+else
+    echo "==> Building release binary..."
+    cargo build --release
+fi
 
 echo "==> Creating app bundle..."
 rm -rf "$BUNDLE_DIR"
