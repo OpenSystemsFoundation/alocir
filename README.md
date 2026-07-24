@@ -37,7 +37,17 @@ Pre-built binaries are available on the [Releases](https://github.com/elgeffe/al
 |----------|----------|
 | Windows (x86_64) | `alocir-windows-x86_64.zip` |
 | Linux (x86_64) | `alocir-linux-x86_64.zip` |
-| macOS (Apple Silicon) | `alocir-macos-arm64.zip` |
+| macOS (Universal — Apple Silicon & Intel) | `alocir-macos-universal.zip` |
+
+#### Opening the app on macOS
+
+The macOS app is ad-hoc signed but not notarized with an Apple Developer ID, so
+on first launch Gatekeeper will block it. This is expected. To open it:
+
+- **Right-click** `Alocir.app` → **Open** → **Open** in the dialog. After the
+  first time it opens normally.
+- Or: **System Settings → Privacy & Security → Open Anyway**.
+- Or, from Terminal: `xattr -cr /Applications/Alocir.app && open /Applications/Alocir.app`
 
 ### Build from source
 
