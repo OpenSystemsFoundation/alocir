@@ -140,7 +140,7 @@ dependencies = [
 
 [[package]]
 name = "alocir"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "alocir-shared",
  "eframe",
@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "alocir-explorer"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "alocir-shared",
  "eframe",
@@ -162,7 +162,7 @@ dependencies = [
 
 [[package]]
 name = "alocir-shared"
-version = "0.3.0"
+version = "1.0.0"
 dependencies = [
  "criterion",
  "eframe",

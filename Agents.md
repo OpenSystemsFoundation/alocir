@@ -1,6 +1,6 @@
 # Alocir
 
-Cross-platform disk space visualizer built with Rust and egui. Inspired by SpaceSniffer.
+Cross-platform disk space visualizer built with Rust and egui.
 
 ## Architecture
 
@@ -15,15 +15,15 @@ A Cargo workspace with three crates:
 `crates/alocir` is a two-phase state machine (`AlocirApp` in `main.rs`):
 
 1. **Start screen**: choose a folder (native dialog), drop one on the window, or scan the home folder. A folder given on the command line (`alocir [--theme NAME] [FOLDER]`) skips this screen.
-2. **Scan + treemap** (`SpaceSnifferApp`): parallel scan with a progress screen, then an interactive squarified treemap with live filesystem updates.
+2. **Scan + treemap** (`TreemapApp`): parallel scan with a progress screen, then an interactive squarified treemap with live filesystem updates.
 
 ### Source files
 
 | File | Purpose |
 |------|---------|
 | `crates/alocir/src/main.rs` | Entry point, command-line parsing, `AlocirApp` state machine, start screen |
-| `crates/alocir/src/app.rs` | `SpaceSnifferApp` state: navigation, filesystem watching and reconciling the in-memory tree, trash, new instance |
-| `crates/alocir/src/app/views.rs` | What `SpaceSnifferApp` draws: scanning screen, toolbar and breadcrumbs, treemap tiles, status bar, rename dialog, keyboard shortcuts |
+| `crates/alocir/src/app.rs` | `TreemapApp` state: navigation, filesystem watching and reconciling the in-memory tree, trash, new instance |
+| `crates/alocir/src/app/views.rs` | What `TreemapApp` draws: scanning screen, toolbar and breadcrumbs, treemap tiles, status bar, rename dialog, keyboard shortcuts |
 | `crates/alocir/src/ui.rs` | Small widgets shared by the start screen and the views |
 | `crates/shared/src/scanner.rs` | `FileNode` tree, parallel recursive scan (Rayon), `ScanProgress`, `disk_usage` |
 | `crates/shared/src/treemap.rs` | Squarified layout (`squarify`) and `layout_visible`, which keeps only drawable tiles |
@@ -45,6 +45,7 @@ A Cargo workspace with three crates:
 - **Live filesystem watching**: on macOS and Windows the scan root is watched recursively (FSEvents and ReadDirectoryChangesW are cheap). On Linux only the current folder is watched, unless the user enables "Watch subfolders" (inotify uses one watch per folder); if that hits the watch limit the app falls back and says why. Events aren't trusted for their kind: `reconcile_path` compares each path with what's on disk. Folders that appear are scanned on a background thread.
 - **Deferred actions**: context menu actions are collected into a `RefCell<Option<DeferredAction>>` and run after the UI pass, to avoid borrowing conflicts.
 - **Platform conditionals**: `file_ops.rs` and `context_menu.rs` use `cfg!(target_os = ...)` for macOS/Windows/Linux behaviour.
+- **No third-party names**: theme names, UI text and store text stay generic. Don't name other products, operating systems or apps (App Review flags it as an intellectual-property issue).
 - **Mac App Store build**: the `app-store` Cargo feature hides what the App Sandbox blocks ("Open Terminal Here", "Scan Home Folder") and trashes through `NSFileManager`. See `docs/mac-app-store.md`.
 
 ### Dependencies
@@ -62,7 +63,7 @@ A Cargo workspace with three crates:
 
 ```bash
 cargo run --release -p alocir              # Build and run
-cargo run -p alocir -- --theme mac ~/Downloads   # Skip the start screen
+cargo run -p alocir -- --theme daylight ~/Downloads   # Skip the start screen
 cargo test --workspace                     # Run tests
 cargo bench -p alocir-shared               # Benchmarks (criterion)
 cargo fmt --all                            # Format (CI fails on unformatted code)
@@ -112,7 +113,7 @@ This project is developed with the assistance of [Claude Code](https://docs.anth
 - Search / filter files by name or extension
 
 ### Future
-- Nested treemap: draw subfolders' contents inside their tiles (SpaceSniffer-style) instead of one level at a time
+- Nested treemap: draw subfolders' contents inside their tiles instead of one level at a time
 - Duplicate file detection
 - Disk usage trends over time
 - Export reports (CSV / HTML)

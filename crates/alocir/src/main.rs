@@ -18,7 +18,7 @@ Arguments:
   [FOLDER]        Folder to scan straight away, skipping the start screen
 
 Options:
-  --theme <NAME>  Color scheme: dark, purple, mac, win98, winxp or matrix
+  --theme <NAME>  Color scheme: dark, purple, daylight, classic, sky or phosphor
   -h, --help      Print this help
   -V, --version   Print the version";
 
@@ -98,7 +98,7 @@ fn home_dir() -> Option<PathBuf> {
 #[allow(clippy::large_enum_variant)]
 enum AppState {
     Start,
-    Scanning(app::SpaceSnifferApp),
+    Scanning(app::TreemapApp),
 }
 
 struct AlocirApp {
@@ -290,7 +290,7 @@ impl eframe::App for AlocirApp {
                     )));
                     let mut settings = std::mem::take(&mut self.settings);
                     settings.open = false;
-                    self.state = AppState::Scanning(app::SpaceSnifferApp::new(
+                    self.state = AppState::Scanning(app::TreemapApp::new(
                         path,
                         HashSet::new(),
                         settings,
@@ -352,14 +352,14 @@ mod tests {
     #[test]
     fn folder_and_theme_in_any_order() {
         for args in [
-            &["/tmp/x", "--theme", "win98"][..],
-            &["--theme=Windows 98", "/tmp/x"][..],
+            &["/tmp/x", "--theme", "classic"][..],
+            &["--theme=Classic", "/tmp/x"][..],
         ] {
             let CliOutcome::Run(cli) = parse(args) else {
                 panic!("expected to run");
             };
             assert_eq!(cli.folder, Some(PathBuf::from("/tmp/x")));
-            assert!(cli.scheme == Some(ColorScheme::Windows98));
+            assert!(cli.scheme == Some(ColorScheme::Classic));
         }
     }
 

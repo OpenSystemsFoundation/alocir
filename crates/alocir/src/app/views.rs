@@ -1,7 +1,7 @@
-//! What `SpaceSnifferApp` draws: the scanning screen, the toolbar, the
+//! What `TreemapApp` draws: the scanning screen, the toolbar, the
 //! treemap, the status bar and the rename dialog.
 
-use super::{RenameState, SpaceSnifferApp};
+use super::{RenameState, TreemapApp};
 use crate::ui::{centered_block, icon_button, primary_button, stat};
 
 use alocir_shared::context_menu::{build_context_menu, DeferredAction};
@@ -339,7 +339,7 @@ fn breadcrumbs(ui: &mut Ui, root: &str, root_path: &str, names: &[&str]) -> Opti
     clicked
 }
 
-impl SpaceSnifferApp {
+impl TreemapApp {
     pub(super) fn show_scanning_ui(&self, ctx: &egui::Context) {
         // Keep the elapsed time ticking even when the scanner is quiet.
         ctx.request_repaint_after(Duration::from_millis(100));
