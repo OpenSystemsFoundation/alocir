@@ -272,8 +272,8 @@ mod tests {
             assert!(theme.hover_boost > 0);
             assert!(theme.hover_boost <= 50);
             // Verify colors are non-zero for at least some channels
-            let has_color = theme.dir_base.iter().any(|&c| c > 0)
-                || theme.file_base.iter().any(|&c| c > 0);
+            let has_color =
+                theme.dir_base.iter().any(|&c| c > 0) || theme.file_base.iter().any(|&c| c > 0);
             assert!(has_color, "Scheme {} has no color", scheme.name());
         }
     }

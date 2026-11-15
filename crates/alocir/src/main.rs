@@ -5,6 +5,8 @@ use eframe::egui;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+// One long-lived value per window, so the size gap between variants doesn't matter.
+#[allow(clippy::large_enum_variant)]
 enum AppState {
     Start,
     Scanning(app::SpaceSnifferApp),
@@ -38,8 +40,7 @@ impl eframe::App for AlocirApp {
                         ui.heading("Alocir");
                         ui.add_space(4.0);
                         ui.label(
-                            egui::RichText::new("Disk space visualizer")
-                                .color(egui::Color32::GRAY),
+                            egui::RichText::new("Disk space visualizer").color(egui::Color32::GRAY),
                         );
                         ui.add_space(32.0);
 
@@ -61,9 +62,10 @@ impl eframe::App for AlocirApp {
 
                 PENDING_PATH.with(|p| {
                     if let Some(path) = p.borrow_mut().take() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-                            format!("Alocir - {}", path.display()),
-                        ));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                            "Alocir - {}",
+                            path.display()
+                        )));
                         transition = Some(AppState::Scanning(app::SpaceSnifferApp::new(
                             path,
                             HashSet::new(),

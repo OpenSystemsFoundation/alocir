@@ -1,0 +1,3 @@
+# Formatting-only commits, skipped by `git blame` (GitHub does this automatically).
+# cargo fmt --all
+8e2a8b4a71353643300687c401e7e2b04066a475

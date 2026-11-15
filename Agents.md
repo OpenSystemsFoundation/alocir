@@ -47,6 +47,8 @@ The app is a two-phase state machine defined in `src/main.rs`:
 ```bash
 cargo run --release       # Build and run
 cargo test                # Run tests
+cargo fmt --all           # Format (CI fails on unformatted code)
+cargo clippy --workspace --all-targets -- -D warnings  # Lint, as CI does
 ./scripts/build-macos.sh  # macOS .app bundle
 ```
 
@@ -58,7 +60,7 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
 
 ## CI/CD
 
-`.github/workflows/ci.yml` builds on all three platforms (Linux x86_64, Windows x86_64, macOS ARM64), runs tests, and creates a GitHub Release with zip artifacts on push to main.
+`.github/workflows/ci.yml` runs a Linux `lint` job (`cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`) and builds on all three platforms (Linux x86_64, Windows x86_64, macOS ARM64), runs tests, and creates a GitHub Release with zip artifacts on push to main.
 
 ## AI-assisted development
 

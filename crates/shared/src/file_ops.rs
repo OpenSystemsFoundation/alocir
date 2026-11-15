@@ -62,12 +62,7 @@ pub fn open_terminal(path: &Path) {
     }
     #[cfg(target_os = "linux")]
     {
-        let terminals = [
-            "x-terminal-emulator",
-            "gnome-terminal",
-            "konsole",
-            "xterm",
-        ];
+        let terminals = ["x-terminal-emulator", "gnome-terminal", "konsole", "xterm"];
         for term in &terminals {
             if std::process::Command::new(term)
                 .current_dir(path)
@@ -79,4 +74,3 @@ pub fn open_terminal(path: &Path) {
         }
     }
 }
-

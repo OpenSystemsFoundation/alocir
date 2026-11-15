@@ -35,12 +35,9 @@ pub fn build_context_menu(
         ui.close_menu();
     }
 
-    if is_dir {
-        if ui.button("Open Terminal Here").clicked() {
-            *deferred.borrow_mut() =
-                Some(DeferredAction::OpenTerminal(item_path.to_path_buf()));
-            ui.close_menu();
-        }
+    if is_dir && ui.button("Open Terminal Here").clicked() {
+        *deferred.borrow_mut() = Some(DeferredAction::OpenTerminal(item_path.to_path_buf()));
+        ui.close_menu();
     }
 
     ui.separator();
@@ -68,9 +65,7 @@ pub fn build_context_menu(
     ui.separator();
 
     if ui
-        .button(
-            egui::RichText::new("Move to Trash").color(Color32::from_rgb(255, 100, 100)),
-        )
+        .button(egui::RichText::new("Move to Trash").color(Color32::from_rgb(255, 100, 100)))
         .clicked()
     {
         *deferred.borrow_mut() = Some(DeferredAction::MoveToTrash(item_path.to_path_buf()));
