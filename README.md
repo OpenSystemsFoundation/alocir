@@ -123,6 +123,10 @@ the color scheme: `dark`, `purple`, `mac`, `win98`, `winxp` or `matrix`.
 | [trash](https://github.com/Byron/trash-rs) | Cross-platform trash/recycle bin |
 | [notify](https://github.com/notify-rs/notify) | Filesystem watching for live updates |
 
+## Privacy
+
+Alocir collects no data and has no network access. See the [privacy policy](PRIVACY.md).
+
 ## License
 
 Apache-2.0
