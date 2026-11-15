@@ -1,7 +1,9 @@
 pub mod context_menu;
 pub mod file_ops;
+pub mod glyphs;
 pub mod icon;
 pub mod scanner;
 pub mod settings;
+pub mod text;
 pub mod theme;
 pub mod treemap;

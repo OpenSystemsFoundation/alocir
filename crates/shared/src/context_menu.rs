@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32};
+use eframe::egui;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
@@ -18,6 +18,20 @@ pub fn build_context_menu(
     item_name: &str,
     is_dir: bool,
 ) {
+    ui.set_min_width(190.0);
+
+    // Header: which item this menu is for.
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(crate::text::truncate_end(item_name, 32))
+                .small()
+                .weak(),
+        );
+    });
+    ui.separator();
+
     if ui.button("Open").clicked() {
         *deferred.borrow_mut() = Some(DeferredAction::OpenFile(item_path.to_path_buf()));
         ui.close_menu();
@@ -35,7 +49,8 @@ pub fn build_context_menu(
         ui.close_menu();
     }
 
-    if is_dir && ui.button("Open Terminal Here").clicked() {
+    // Hidden in Mac App Store builds: launching Terminal does not work from the sandbox.
+    if !cfg!(feature = "app-store") && is_dir && ui.button("Open Terminal Here").clicked() {
         *deferred.borrow_mut() = Some(DeferredAction::OpenTerminal(item_path.to_path_buf()));
         ui.close_menu();
     }
@@ -49,12 +64,7 @@ pub fn build_context_menu(
         ui.close_menu();
     }
 
-    let rename_label = if item_name.len() > 20 {
-        format!("Rename \"{}...\"...", &item_name[..17])
-    } else {
-        format!("Rename \"{}\"...", item_name)
-    };
-    if ui.button(rename_label).clicked() {
+    if ui.button("Rename\u{2026}").clicked() {
         *deferred.borrow_mut() = Some(DeferredAction::StartRename {
             path: item_path.to_path_buf(),
             current_name: item_name.to_string(),
@@ -64,8 +74,10 @@ pub fn build_context_menu(
 
     ui.separator();
 
+    // The theme's error colour is chosen to be readable on its menu background.
+    let danger = ui.visuals().error_fg_color;
     if ui
-        .button(egui::RichText::new("Move to Trash").color(Color32::from_rgb(255, 100, 100)))
+        .button(egui::RichText::new("Move to Trash").color(danger))
         .clicked()
     {
         *deferred.borrow_mut() = Some(DeferredAction::MoveToTrash(item_path.to_path_buf()));
