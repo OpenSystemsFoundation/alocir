@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,6 +14,8 @@ jobs:
   # Fast, Linux-only checks. Runs alongside the platform builds below.
   lint:
     name: Format and clippy
+    # Manual runs exist only for the app-store job below.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +48,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   build:
+    if: github.event_name != 'workflow_dispatch'
     strategy:
       matrix:
         include:
@@ -90,13 +94,45 @@ jobs:
 
       - name: Create macOS app bundle
         if: runner.os == 'macOS'
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+          IS_RELEASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         run: |
           chmod +x scripts/build-macos.sh
           # Build a universal binary so the app runs natively on both Apple
           # Silicon and Intel Macs.
-          ./scripts/build-macos.sh --universal
+          if [[ "$IS_RELEASE" == "true" && -n "$MACOS_CERTIFICATE_P12" && -n "$APPLE_API_KEY_P8" ]]; then
+            # Release builds: sign with the Developer ID certificate and
+            # notarize, so Gatekeeper opens the app without warnings.
+            KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+            KEYCHAIN_PASSWORD=$(uuidgen)
+            echo "$MACOS_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN"
+            security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+              -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: \
+              -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+            rm "$RUNNER_TEMP/cert.p12"
+
+            export APPLE_API_KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+            echo "$APPLE_API_KEY_P8" | base64 --decode > "$APPLE_API_KEY_PATH"
+
+            ./scripts/build-macos.sh --universal --sign "$MACOS_SIGN_IDENTITY" --notarize
+          else
+            # PRs and forks have no signing secrets: ad-hoc sign instead.
+            ./scripts/build-macos.sh --universal
+          fi
           # Package the .app on the macOS runner with ditto so the executable
-          # bit, extended attributes, symlinks and ad-hoc code signature are
+          # bit, extended attributes, symlinks, code signature and stapled
+          # notarization ticket are
           # preserved. upload-artifact strips the executable bit and re-zipping
           # the bundle on Linux invalidates the signature, which makes macOS
           # report the app as "damaged" (the Gatekeeper override can't fix a
@@ -137,7 +173,8 @@ jobs:
       - name: Get version from Cargo.toml
         id: version
         run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          # The workspace root has no version; the app crate holds it.
+          VERSION=$(grep -m1 '^version' crates/alocir/Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
@@ -161,8 +198,8 @@ jobs:
           cd ../..
 
           # macOS — the universal zip was already produced on the macOS runner
-          # with ditto (preserving the executable bit and ad-hoc code
-          # signature), so use it as-is. Do NOT unpack and re-zip here:
+          # with ditto (preserving the executable bit, code signature and
+          # notarization ticket), so use it as-is. Do NOT unpack and re-zip here:
           # repackaging the .app on Linux breaks the signature and macOS then
           # refuses to open the app.
           cp artifacts/alocir-macos-universal/alocir-macos-universal.zip release/alocir-macos-universal.zip
@@ -175,3 +212,98 @@ jobs:
           files: release/*
           make_latest: true
           generate_release_notes: true
+
+  # Mac App Store build. Manual only: run it from the Actions tab
+  # ("Run workflow"). Builds a universal, sandboxed .pkg signed for the store
+  # and uploads it to App Store Connect. See docs/mac-app-store.md.
+  app-store:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+
+    steps:
+      - name: Check for App Store secrets
+        id: secrets
+        env:
+          MAS_APP_CERT_P12: ${{ secrets.MAS_APP_CERT_P12 }}
+          MAS_INSTALLER_CERT_P12: ${{ secrets.MAS_INSTALLER_CERT_P12 }}
+          MAS_CERT_PASSWORD: ${{ secrets.MAS_CERT_PASSWORD }}
+          MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+          MAS_APP_SIGN_IDENTITY: ${{ secrets.MAS_APP_SIGN_IDENTITY }}
+          MAS_INSTALLER_SIGN_IDENTITY: ${{ secrets.MAS_INSTALLER_SIGN_IDENTITY }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          missing=""
+          for name in MAS_APP_CERT_P12 MAS_INSTALLER_CERT_P12 MAS_CERT_PASSWORD \
+            MAS_PROVISIONING_PROFILE MAS_APP_SIGN_IDENTITY MAS_INSTALLER_SIGN_IDENTITY \
+            APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER_ID; do
+            if [[ -z "${!name}" ]]; then
+              missing="$missing $name"
+            fi
+          done
+          if [[ -n "$missing" ]]; then
+            echo "::notice title=App Store build skipped::Missing secrets:$missing"
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - uses: actions/checkout@v4
+        if: steps.secrets.outputs.available == 'true'
+
+      - name: Install Rust toolchain
+        if: steps.secrets.outputs.available == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Import signing certificates
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          MAS_APP_CERT_P12: ${{ secrets.MAS_APP_CERT_P12 }}
+          MAS_INSTALLER_CERT_P12: ${{ secrets.MAS_INSTALLER_CERT_P12 }}
+          MAS_CERT_PASSWORD: ${{ secrets.MAS_CERT_PASSWORD }}
+          MAS_PROVISIONING_PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$MAS_APP_CERT_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          echo "$MAS_INSTALLER_CERT_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/app.p12" -k "$KEYCHAIN" \
+            -P "$MAS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security import "$RUNNER_TEMP/installer.p12" -k "$KEYCHAIN" \
+            -P "$MAS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/installer.p12"
+
+          echo "$MAS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/embedded.provisionprofile"
+          echo "$APPLE_API_KEY_P8" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+
+      - name: Build, sign and upload to App Store Connect
+        if: steps.secrets.outputs.available == 'true'
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          PROVISIONING_PROFILE: ${{ runner.temp }}/embedded.provisionprofile
+          APP_SIGN_IDENTITY: ${{ secrets.MAS_APP_SIGN_IDENTITY }}
+          INSTALLER_SIGN_IDENTITY: ${{ secrets.MAS_INSTALLER_SIGN_IDENTITY }}
+          APPLE_API_KEY_PATH: ${{ runner.temp }}/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          chmod +x scripts/build-macos.sh
+          ./scripts/build-macos.sh --universal --app-store --upload
+
+      - name: Upload artifact (App Store pkg)
+        if: steps.secrets.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: alocir-mac-app-store
+          path: target/release/Alocir.pkg
