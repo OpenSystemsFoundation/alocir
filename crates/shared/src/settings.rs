@@ -8,6 +8,12 @@ pub struct SettingsState {
     pub scheme: ColorScheme,
 }
 
+impl Default for SettingsState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SettingsState {
     pub fn new() -> Self {
         SettingsState {

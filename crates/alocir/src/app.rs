@@ -297,7 +297,7 @@ impl SpaceSnifferApp {
         for &idx in &self.nav_stack {
             node = &mut node.children[idx];
         }
-        node.children.sort_unstable_by(|a, b| b.size.cmp(&a.size));
+        node.children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
     }
 
     fn trigger_rescan(&mut self, ctx: &egui::Context) {
@@ -640,7 +640,7 @@ impl SpaceSnifferApp {
                 painter.rect_stroke(
                     item.inner,
                     CornerRadius::same(3),
-                    Stroke::new(1.0, border),
+                    Stroke::new(1.0_f32, border),
                     StrokeKind::Outside,
                 );
 

@@ -22,6 +22,12 @@ pub struct ScanProgress {
     pub duration: Mutex<Option<Duration>>,
 }
 
+impl Default for ScanProgress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScanProgress {
     pub fn new() -> Self {
         ScanProgress {
@@ -93,7 +99,7 @@ impl FileNode {
             .collect();
 
         let total_size: u64 = children.iter().map(|c| c.size).sum();
-        children.sort_unstable_by(|a, b| b.size.cmp(&a.size));
+        children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
 
         Some(FileNode {
             name,
@@ -205,7 +211,7 @@ impl FileNode {
         let total_size: u64 = children.iter().map(|c| c.size).sum();
 
         // Sort children by size descending for better treemap layout
-        children.sort_unstable_by(|a, b| b.size.cmp(&a.size));
+        children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
 
         FileNode {
             name,

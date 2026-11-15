@@ -4,6 +4,8 @@ use eframe::egui;
 use explorer::ExplorerApp;
 use std::path::PathBuf;
 
+// One long-lived value per window, so the size gap between variants doesn't matter.
+#[allow(clippy::large_enum_variant)]
 enum AppState {
     Start,
     Exploring(ExplorerApp),

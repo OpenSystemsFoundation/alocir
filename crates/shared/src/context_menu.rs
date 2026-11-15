@@ -35,13 +35,12 @@ pub fn build_context_menu(
         ui.close_menu();
     }
 
-    if is_dir {
-        if ui.button("Open Terminal Here").clicked() {
+    if is_dir
+        && ui.button("Open Terminal Here").clicked() {
             *deferred.borrow_mut() =
                 Some(DeferredAction::OpenTerminal(item_path.to_path_buf()));
             ui.close_menu();
         }
-    }
 
     ui.separator();
 

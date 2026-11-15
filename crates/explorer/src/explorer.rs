@@ -117,7 +117,7 @@ fn read_subdirs(dir: &Path) -> Vec<TreeNode> {
             .collect(),
         Err(_) => Vec::new(),
     };
-    entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    entries.sort_by_key(|a| a.name.to_lowercase());
     entries
 }
 
@@ -202,7 +202,7 @@ impl FolderTree {
                 ui.painter().rect_stroke(
                     rect,
                     egui::CornerRadius::same(2),
-                    egui::Stroke::new(1.0, Color32::from_rgb(80, 140, 220)),
+                    egui::Stroke::new(1.0_f32, Color32::from_rgb(80, 140, 220)),
                     egui::StrokeKind::Outside,
                 );
             }
