@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ColorScheme {
     DarkMode,
-    Retro,
+    PurpleDreams,
     MacOsX,
     Windows98,
     WindowsXp,
@@ -18,7 +18,7 @@ pub enum ColorScheme {
 impl ColorScheme {
     pub const ALL: &'static [ColorScheme] = &[
         ColorScheme::DarkMode,
-        ColorScheme::Retro,
+        ColorScheme::PurpleDreams,
         ColorScheme::MacOsX,
         ColorScheme::Windows98,
         ColorScheme::WindowsXp,
@@ -28,7 +28,7 @@ impl ColorScheme {
     pub fn name(self) -> &'static str {
         match self {
             ColorScheme::DarkMode => "Dark Mode",
-            ColorScheme::Retro => "SNES",
+            ColorScheme::PurpleDreams => "Purple Dreams",
             ColorScheme::MacOsX => "Mac OS X",
             ColorScheme::Windows98 => "Windows 98",
             ColorScheme::WindowsXp => "Windows XP",
@@ -39,7 +39,7 @@ impl ColorScheme {
     pub fn is_dark(self) -> bool {
         match self {
             ColorScheme::DarkMode => true,
-            ColorScheme::Retro => true,
+            ColorScheme::PurpleDreams => true,
             ColorScheme::MacOsX => false,
             ColorScheme::Windows98 => false,
             ColorScheme::WindowsXp => false,
@@ -57,7 +57,7 @@ impl ColorScheme {
             .collect();
         Some(match key.as_str() {
             "dark" | "darkmode" => ColorScheme::DarkMode,
-            "snes" | "retro" => ColorScheme::Retro,
+            "purple" | "purpledreams" | "snes" | "retro" => ColorScheme::PurpleDreams,
             "mac" | "macos" | "macosx" | "osx" | "light" => ColorScheme::MacOsX,
             "windows98" | "win98" | "98" => ColorScheme::Windows98,
             "windowsxp" | "winxp" | "xp" => ColorScheme::WindowsXp,
@@ -86,7 +86,7 @@ impl ColorScheme {
                 danger: rgb(255, 110, 110),
                 radius: 6,
             },
-            ColorScheme::Retro => UiPalette {
+            ColorScheme::PurpleDreams => UiPalette {
                 panel: rgb(30, 26, 46),
                 window: rgb(40, 34, 61),
                 canvas: rgb(20, 17, 32),
@@ -306,8 +306,8 @@ impl ColorScheme {
                 indicator: Color32::WHITE,
                 hover_boost: 30,
             },
-            ColorScheme::Retro => ThemeColors {
-                // SNES-inspired: purple/lavender dirs, muted blue-grey files
+            ColorScheme::PurpleDreams => ThemeColors {
+                // Purple Dreams: purple/lavender dirs, muted blue-grey files
                 dir_base: [75, 50, 130],
                 dir_range: [40, 30, 50],
                 file_base: [80, 80, 110],
@@ -525,7 +525,7 @@ mod tests {
     #[test]
     fn dark_schemes_identified() {
         assert!(ColorScheme::DarkMode.is_dark());
-        assert!(ColorScheme::Retro.is_dark());
+        assert!(ColorScheme::PurpleDreams.is_dark());
         assert!(ColorScheme::Matrix.is_dark());
     }
 
@@ -620,6 +620,8 @@ mod tests {
             assert!(ColorScheme::from_name(scheme.name()) == Some(scheme));
         }
         assert!(ColorScheme::from_name("win98") == Some(ColorScheme::Windows98));
+        assert!(ColorScheme::from_name("purple-dreams") == Some(ColorScheme::PurpleDreams));
+        assert!(ColorScheme::from_name("snes") == Some(ColorScheme::PurpleDreams));
         assert!(ColorScheme::from_name("MAC-OS-X") == Some(ColorScheme::MacOsX));
         assert!(ColorScheme::from_name("nope").is_none());
     }

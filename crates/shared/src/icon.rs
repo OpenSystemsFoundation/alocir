@@ -1,5 +1,5 @@
 /// Generate the app icon as raw RGBA pixel data (256x256).
-/// Matches the SVG logo: SNES grey background with treemap blocks in
+/// Matches the SVG logo: light grey background with treemap blocks in
 /// purple, blue, red, green, yellow.
 ///
 /// Includes ~10% transparent padding on all sides and uses a macOS-style

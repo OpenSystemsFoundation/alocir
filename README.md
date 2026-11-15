@@ -25,7 +25,7 @@
 - **Live updates** — Files created, changed, renamed, moved or deleted while you look are reflected without a rescan. On macOS and Windows the whole scanned tree is watched; on Linux only the folder you're viewing, unless you enable **Watch subfolders** in Settings (it uses one inotify watch per folder).
 - **Drill-down navigation** — Click directories to explore, breadcrumb trail to navigate back, **Rescan** to start over
 - **File operations** — Open, reveal in the file manager, copy path, rename, move to trash and open a terminal via the right-click context menu
-- **6 color schemes** — Dark Mode, SNES, Mac OS X, Windows 98, Windows XP, Matrix; each styles the whole interface, not just the tiles
+- **6 color schemes** — Dark Mode, Purple Dreams, Mac OS X, Windows 98, Windows XP, Matrix; each styles the whole interface, not just the tiles
 - **Cross-platform** — Runs on Windows, Linux, and macOS
 
 ## Installation
@@ -111,7 +111,7 @@ alocir [--theme NAME] [FOLDER]
 ```
 
 `FOLDER` is scanned straight away, skipping the start screen. `--theme` picks
-the color scheme: `dark`, `snes`, `mac`, `win98`, `winxp` or `matrix`.
+the color scheme: `dark`, `purple`, `mac`, `win98`, `winxp` or `matrix`.
 
 ## Dependencies
 

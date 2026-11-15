@@ -18,7 +18,7 @@ Arguments:
   [FOLDER]        Folder to scan straight away, skipping the start screen
 
 Options:
-  --theme <NAME>  Color scheme: dark, snes, mac, win98, winxp or matrix
+  --theme <NAME>  Color scheme: dark, purple, mac, win98, winxp or matrix
   -h, --help      Print this help
   -V, --version   Print the version";
 
