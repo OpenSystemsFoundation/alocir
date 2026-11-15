@@ -63,7 +63,7 @@ A Cargo workspace with three crates:
 
 ```bash
 cargo run --release -p alocir              # Build and run
-cargo run -p alocir -- --theme mac ~/Downloads   # Skip the start screen
+cargo run -p alocir -- --theme daylight ~/Downloads   # Skip the start screen
 cargo test --workspace                     # Run tests
 cargo bench -p alocir-shared               # Benchmarks (criterion)
 cargo fmt --all                            # Format (CI fails on unformatted code)

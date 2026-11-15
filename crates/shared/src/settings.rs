@@ -3,6 +3,10 @@ use eframe::egui::{self, Align2, CornerRadius, FontId, Rect, Sense, Stroke, Stro
 use crate::glyphs;
 use crate::theme::ColorScheme;
 
+/// Shown in the About section of the settings window.
+pub const PRIVACY_POLICY_URL: &str = "https://opensf.foundation/privacy/";
+pub const SUPPORT_URL: &str = "https://opensf.foundation/products/alocir/support/";
+
 pub struct SettingsState {
     pub open: bool,
     pub scheme: ColorScheme,
@@ -194,6 +198,14 @@ pub fn show_settings_window(ctx: &egui::Context, state: &mut SettingsState) {
                 ui.weak(concat!("v", env!("CARGO_PKG_VERSION")));
             });
             ui.weak("Cross-platform disk space visualizer.");
+            ui.add_space(4.0);
+            // App Review guideline 5.1.1(i): the privacy policy must be
+            // reachable from inside the app, not only from the store listing.
+            ui.horizontal(|ui| {
+                ui.hyperlink_to("Privacy policy", PRIVACY_POLICY_URL);
+                ui.weak("·");
+                ui.hyperlink_to("Support", SUPPORT_URL);
+            });
         });
     state.open = open;
 }
