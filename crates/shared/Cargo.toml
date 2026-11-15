@@ -1,6 +1,6 @@
 [package]
 name = "alocir-shared"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [dependencies]
@@ -9,3 +9,14 @@ rfd = "0.15"
 trash = "5"
 rayon = "1"
 notify = "8"
+
+[features]
+# Mac App Store build: hides features that cannot work inside the App Sandbox.
+app-store = []
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "core"
+harness = false
