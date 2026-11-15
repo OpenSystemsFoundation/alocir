@@ -20,7 +20,7 @@
 ## Features
 
 - **Interactive treemap** — Visualize disk usage with a squarified treemap layout
-- **Real disk usage** — Sizes are the space files occupy on disk (allocated blocks), so sparse files don't inflate totals and hard-linked files are counted once. On Windows, sizes are file lengths.
+- **Real disk usage** — Sizes are the space files occupy on disk (allocated blocks), so sparse files don't inflate totals, hard-linked files are counted once, and a folder reachable through two paths (such as macOS's `/Users` and `/System/Volumes/Data/Users`) is counted once when you scan the whole disk. On Windows, sizes are file lengths.
 - **Parallel scanning** — Fast directory scanning powered by Rayon
 - **Live updates** — Files created, changed, renamed, moved or deleted while you look are reflected without a rescan. On macOS and Windows the whole scanned tree is watched; on Linux only the folder you're viewing, unless you enable **Watch subfolders** in Settings (it uses one inotify watch per folder).
 - **Drill-down navigation** — Click directories to explore, breadcrumb trail to navigate back, **Rescan** to start over

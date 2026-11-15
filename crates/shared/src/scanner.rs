@@ -26,6 +26,10 @@ pub struct ScanProgress {
     last_path_update_ms: AtomicU64,
     /// Hard-linked files already counted in this scan.
     seen_hard_links: Mutex<HashSet<(u64, u64)>>,
+    /// Directories already visited in this scan, by `(device, inode)`.
+    seen_dirs: Mutex<HashSet<(u64, u64)>>,
+    /// Directories put off until the rest of the scan is done.
+    deferred: Mutex<Vec<PathBuf>>,
 }
 
 /// Bytes a file occupies on disk (allocated blocks), which is what a disk
@@ -59,6 +63,33 @@ fn hard_link_id(meta: &fs::Metadata) -> Option<(u64, u64)> {
     }
 }
 
+/// `(device, inode)` of a directory, used to visit each directory once even
+/// when it is reachable through more than one path (macOS firmlinks such as
+/// `/Users` → `/System/Volumes/Data/Users`, Linux bind mounts).
+fn dir_id(meta: &fs::Metadata) -> Option<(u64, u64)> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        Some((meta.dev(), meta.ino()))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = meta;
+        None
+    }
+}
+
+/// macOS keeps user data on a separate volume mounted here, and firmlinks
+/// `/Users`, `/Applications`, `/Library`, `/private`, ... into it. A scan that
+/// contains this folder scans it last, so the data is counted under the
+/// familiar paths and only what is unique to the volume (Spotlight index,
+/// document revisions, ...) stays under it.
+const MACOS_DATA_VOLUME: &str = "/System/Volumes/Data";
+
+fn is_deferred_volume(path: &Path) -> bool {
+    cfg!(target_os = "macos") && path == Path::new(MACOS_DATA_VOLUME)
+}
+
 /// Minimum time between progress-path updates (and the repaints they request).
 const PATH_UPDATE_INTERVAL_MS: u64 = 50;
 
@@ -80,6 +111,8 @@ impl ScanProgress {
             started: Instant::now(),
             last_path_update_ms: AtomicU64::new(0),
             seen_hard_links: Mutex::new(HashSet::new()),
+            seen_dirs: Mutex::new(HashSet::new()),
+            deferred: Mutex::new(Vec::new()),
         }
     }
 
@@ -124,12 +157,81 @@ impl FileNode {
         });
     }
 
+    /// Scan `path` recursively. Each directory is counted once, however many
+    /// paths lead to it.
     pub fn scan(
         path: &Path,
         progress: &Arc<ScanProgress>,
         excluded: &Arc<HashSet<PathBuf>>,
         ctx: &eframe::egui::Context,
     ) -> FileNode {
+        let mut root =
+            FileNode::scan_entry(path, path, progress, excluded, ctx).unwrap_or_else(|| FileNode {
+                name: path.to_string_lossy().to_string(),
+                size: 0,
+                children: Vec::new(),
+                is_dir: true,
+            });
+
+        // Now that everything else is counted, scan what was put off; any
+        // directory already seen through another path is left out of it.
+        let deferred = std::mem::take(&mut *progress.deferred.lock().unwrap());
+        for dir in deferred {
+            let Ok(relative) = dir.strip_prefix(path) else {
+                continue;
+            };
+            let components: Vec<String> = relative
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().to_string())
+                .collect();
+            if let Some(node) = FileNode::scan_entry(&dir, path, progress, excluded, ctx) {
+                root.graft(&components, node);
+            }
+        }
+        root
+    }
+
+    /// Insert `node` at `path` (names below `self`, the last being `node`'s
+    /// own), adding its size to every directory on the way. Missing
+    /// intermediate directories are created.
+    fn graft(&mut self, path: &[String], node: FileNode) {
+        self.size += node.size;
+        match path {
+            [] => {}
+            [_] => self.children.push(node),
+            [first, rest @ ..] => {
+                let pos = match self
+                    .children
+                    .iter()
+                    .position(|c| c.is_dir && &c.name == first)
+                {
+                    Some(pos) => pos,
+                    None => {
+                        self.children.push(FileNode {
+                            name: first.clone(),
+                            size: 0,
+                            children: Vec::new(),
+                            is_dir: true,
+                        });
+                        self.children.len() - 1
+                    }
+                };
+                self.children[pos].graft(rest, node);
+            }
+        }
+        self.children
+            .sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
+    }
+
+    /// Scan one entry. Returns `None` for a directory that is skipped here:
+    /// already visited through another path, or put off until later.
+    fn scan_entry(
+        path: &Path,
+        root: &Path,
+        progress: &Arc<ScanProgress>,
+        excluded: &Arc<HashSet<PathBuf>>,
+        ctx: &eframe::egui::Context,
+    ) -> Option<FileNode> {
         let name = path
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
@@ -139,45 +241,60 @@ impl FileNode {
         let meta = match fs::symlink_metadata(path) {
             Ok(m) => m,
             Err(_) => {
-                return FileNode {
+                return Some(FileNode {
                     name,
                     size: 0,
                     children: Vec::new(),
                     is_dir: false,
-                };
+                });
             }
         };
 
         // Skip symlinks
         if meta.is_symlink() {
-            return FileNode {
+            return Some(FileNode {
                 name,
                 size: 0,
                 children: Vec::new(),
                 is_dir: false,
-            };
+            });
         }
 
         if meta.is_file() {
             let size = progress.file_usage(&meta);
             progress.items_scanned.fetch_add(1, Ordering::Relaxed);
             progress.bytes_scanned.fetch_add(size, Ordering::Relaxed);
-            return FileNode {
+            return Some(FileNode {
                 name,
                 size,
                 children: Vec::new(),
                 is_dir: false,
-            };
+            });
         }
 
         // Skip excluded directories.
         if excluded.contains(path) {
-            return FileNode {
+            return Some(FileNode {
                 name,
                 size: 0,
                 children: Vec::new(),
                 is_dir: true,
-            };
+            });
+        }
+
+        // Put the macOS data volume off until the end (see MACOS_DATA_VOLUME),
+        // unless it is what the user asked to scan.
+        if path != root && is_deferred_volume(path) {
+            progress.deferred.lock().unwrap().push(path.to_path_buf());
+            return None;
+        }
+
+        // Count each directory once. This lock is taken per directory, not
+        // per file, so it stays cheap.
+        if let Some(id) = dir_id(&meta) {
+            if !progress.seen_dirs.lock().unwrap().insert(id) {
+                return None;
+            }
         }
 
         // Directory: update progress path, at most every PATH_UPDATE_INTERVAL_MS.
@@ -192,12 +309,12 @@ impl FileNode {
         let read_dir = match fs::read_dir(path) {
             Ok(rd) => rd,
             Err(_) => {
-                return FileNode {
+                return Some(FileNode {
                     name,
                     size: 0,
                     children: Vec::new(),
                     is_dir: true,
-                };
+                });
             }
         };
 
@@ -255,7 +372,7 @@ impl FileNode {
         children.par_extend(
             subdirs
                 .par_iter()
-                .map(|dir| FileNode::scan(dir, progress, excluded, ctx)),
+                .filter_map(|dir| FileNode::scan_entry(dir, root, progress, excluded, ctx)),
         );
 
         let total_size: u64 = children.iter().map(|c| c.size).sum();
@@ -263,12 +380,12 @@ impl FileNode {
         // Sort children by size descending for better treemap layout
         children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
 
-        FileNode {
+        Some(FileNode {
             name,
             size: total_size,
             children,
             is_dir: true,
-        }
+        })
     }
 }
 
@@ -460,6 +577,78 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
 
         assert_eq!(node.size, keep);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_reached_twice_is_counted_once() {
+        // A second path to an already-visited directory (a firmlink or bind
+        // mount in real life) is skipped, because it has the same
+        // (device, inode). Simulate that by scanning a subdirectory again with
+        // the same progress state.
+        let root = std::env::temp_dir().join(format!("alocir-dirid-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("data/users")).unwrap();
+        fs::write(root.join("data/users/f.bin"), vec![1u8; 8192]).unwrap();
+
+        let progress = Arc::new(ScanProgress::new());
+        let excluded = Arc::new(HashSet::new());
+        let ctx = eframe::egui::Context::default();
+        let first = FileNode::scan(&root, &progress, &excluded, &ctx);
+        let again =
+            FileNode::scan_entry(&root.join("data/users"), &root, &progress, &excluded, &ctx);
+        let _ = fs::remove_dir_all(&root);
+
+        assert!(first.size > 0);
+        assert!(
+            again.is_none(),
+            "an already-visited directory must be skipped"
+        );
+    }
+
+    #[test]
+    fn graft_inserts_node_and_updates_ancestor_sizes() {
+        let leaf = |name: &str, size| FileNode {
+            name: name.to_string(),
+            size,
+            children: Vec::new(),
+            is_dir: false,
+        };
+        let mut root = FileNode {
+            name: "/".into(),
+            size: 10,
+            children: vec![FileNode {
+                name: "System".into(),
+                size: 10,
+                children: vec![leaf("kernel", 10)],
+                is_dir: true,
+            }],
+            is_dir: true,
+        };
+        let data = FileNode {
+            name: "Data".into(),
+            size: 50,
+            children: vec![leaf(".Spotlight-V100", 50)],
+            is_dir: true,
+        };
+        root.graft(&["System".into(), "Volumes".into(), "Data".into()], data);
+
+        assert_eq!(root.size, 60);
+        let system = &root.children[0];
+        assert_eq!(system.size, 60);
+        // "Volumes" was created and sorted ahead of the smaller "kernel".
+        assert_eq!(system.children[0].name, "Volumes");
+        assert_eq!(system.children[0].size, 50);
+        assert_eq!(system.children[0].children[0].name, "Data");
+    }
+
+    #[test]
+    fn data_volume_is_deferred_only_on_macos() {
+        assert_eq!(
+            is_deferred_volume(Path::new("/System/Volumes/Data")),
+            cfg!(target_os = "macos")
+        );
+        assert!(!is_deferred_volume(Path::new("/System/Volumes/Data/Users")));
     }
 
     #[test]
