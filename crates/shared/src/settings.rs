@@ -193,7 +193,7 @@ pub fn show_settings_window(ctx: &egui::Context, state: &mut SettingsState) {
                 ui.label(egui::RichText::new("Alocir").strong());
                 ui.weak(concat!("v", env!("CARGO_PKG_VERSION")));
             });
-            ui.weak("Cross-platform disk space visualizer, inspired by SpaceSniffer.");
+            ui.weak("Cross-platform disk space visualizer.");
         });
     state.open = open;
 }

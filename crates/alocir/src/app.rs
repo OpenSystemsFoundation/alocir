@@ -19,7 +19,7 @@ struct RenameState {
     focus_pending: bool,
 }
 
-pub struct SpaceSnifferApp {
+pub struct TreemapApp {
     root: Option<FileNode>,
     root_path: String,
     scan_path: PathBuf,
@@ -60,7 +60,7 @@ pub struct SpaceSnifferApp {
     pending_scans: HashMap<PathBuf, bool>,
 }
 
-impl SpaceSnifferApp {
+impl TreemapApp {
     pub fn new(
         path: PathBuf,
         excluded: HashSet<PathBuf>,
@@ -78,7 +78,7 @@ impl SpaceSnifferApp {
         );
         let scan_path_canonical = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
         let watch_subfolders_applied = settings.watch_subfolders;
-        SpaceSnifferApp {
+        TreemapApp {
             root: None,
             root_path,
             scan_path: path,
@@ -559,7 +559,7 @@ impl SpaceSnifferApp {
     }
 }
 
-impl eframe::App for SpaceSnifferApp {
+impl eframe::App for TreemapApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.settings.apply_theme(ctx);
 
@@ -697,8 +697,8 @@ mod tests {
     use super::*;
 
     /// Scan `dir` synchronously into a fresh app, as `update` would.
-    fn app_for(dir: &Path, ctx: &egui::Context) -> SpaceSnifferApp {
-        let mut app = SpaceSnifferApp::new(
+    fn app_for(dir: &Path, ctx: &egui::Context) -> TreemapApp {
+        let mut app = TreemapApp::new(
             dir.to_path_buf(),
             HashSet::new(),
             SettingsState::default(),
@@ -712,7 +712,7 @@ mod tests {
         app
     }
 
-    fn names(app: &SpaceSnifferApp) -> Vec<String> {
+    fn names(app: &TreemapApp) -> Vec<String> {
         let mut v: Vec<String> = app
             .current_node()
             .unwrap()
@@ -736,7 +736,7 @@ mod tests {
         let mut app = app_for(&root, &ctx);
         app.nav_stack = vec![0]; // into "sub"
         let sub = root.join("sub");
-        let total = |app: &SpaceSnifferApp| app.root.as_ref().unwrap().size;
+        let total = |app: &TreemapApp| app.root.as_ref().unwrap().size;
         let a = usage(&sub.join("a.bin"));
 
         // New file
@@ -802,17 +802,13 @@ mod tests {
         root
     }
 
-    fn node<'a>(app: &'a SpaceSnifferApp, path: &[&str]) -> &'a FileNode {
+    fn node<'a>(app: &'a TreemapApp, path: &[&str]) -> &'a FileNode {
         let names: Vec<String> = path.iter().map(|s| s.to_string()).collect();
         app.dir_at(&names).unwrap()
     }
 
     /// Poll background results until `done` holds, or panic after 5s.
-    fn wait_for(
-        app: &mut SpaceSnifferApp,
-        ctx: &egui::Context,
-        done: impl Fn(&SpaceSnifferApp) -> bool,
-    ) {
+    fn wait_for(app: &mut TreemapApp, ctx: &egui::Context, done: impl Fn(&TreemapApp) -> bool) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
         while !done(app) {
             assert!(std::time::Instant::now() < deadline, "timed out");
@@ -902,9 +898,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    fn nav_to(app: &SpaceSnifferApp, names: &[&str]) -> Vec<usize> {
+    fn nav_to(app: &TreemapApp, names: &[&str]) -> Vec<usize> {
         let names: Vec<String> = names.iter().map(|s| s.to_string()).collect();
-        SpaceSnifferApp::restore_nav(app.root.as_ref().unwrap(), &names)
+        TreemapApp::restore_nav(app.root.as_ref().unwrap(), &names)
     }
 
     #[test]
@@ -1003,24 +999,23 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(300));
 
         let deep = root.join("l1/l2");
-        let has = |app: &SpaceSnifferApp, name: &str| {
+        let has = |app: &TreemapApp, name: &str| {
             node(app, &["l1", "l2"])
                 .children
                 .iter()
                 .any(|c| c.name == name)
         };
-        let wait =
-            |app: &mut SpaceSnifferApp, what: &str, done: &dyn Fn(&SpaceSnifferApp) -> bool| {
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-                while !done(app) {
-                    assert!(
-                        std::time::Instant::now() < deadline,
-                        "timed out waiting for {what}"
-                    );
-                    std::thread::sleep(std::time::Duration::from_millis(20));
-                    app.process_watch_events(&ctx);
-                }
-            };
+        let wait = |app: &mut TreemapApp, what: &str, done: &dyn Fn(&TreemapApp) -> bool| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !done(app) {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "timed out waiting for {what}"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                app.process_watch_events(&ctx);
+            }
+        };
 
         std::fs::write(deep.join("a.bin"), vec![1u8; 100_000]).unwrap();
         let a = usage(&deep.join("a.bin"));

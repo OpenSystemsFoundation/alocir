@@ -9,30 +9,30 @@ use std::hash::{Hash, Hasher};
 pub enum ColorScheme {
     DarkMode,
     PurpleDreams,
-    MacOsX,
-    Windows98,
-    WindowsXp,
-    Matrix,
+    Daylight,
+    Classic,
+    Sky,
+    Phosphor,
 }
 
 impl ColorScheme {
     pub const ALL: &'static [ColorScheme] = &[
         ColorScheme::DarkMode,
         ColorScheme::PurpleDreams,
-        ColorScheme::MacOsX,
-        ColorScheme::Windows98,
-        ColorScheme::WindowsXp,
-        ColorScheme::Matrix,
+        ColorScheme::Daylight,
+        ColorScheme::Classic,
+        ColorScheme::Sky,
+        ColorScheme::Phosphor,
     ];
 
     pub fn name(self) -> &'static str {
         match self {
             ColorScheme::DarkMode => "Dark Mode",
             ColorScheme::PurpleDreams => "Purple Dreams",
-            ColorScheme::MacOsX => "Mac OS X",
-            ColorScheme::Windows98 => "Windows 98",
-            ColorScheme::WindowsXp => "Windows XP",
-            ColorScheme::Matrix => "Matrix",
+            ColorScheme::Daylight => "Daylight",
+            ColorScheme::Classic => "Classic",
+            ColorScheme::Sky => "Sky",
+            ColorScheme::Phosphor => "Phosphor",
         }
     }
 
@@ -40,15 +40,15 @@ impl ColorScheme {
         match self {
             ColorScheme::DarkMode => true,
             ColorScheme::PurpleDreams => true,
-            ColorScheme::MacOsX => false,
-            ColorScheme::Windows98 => false,
-            ColorScheme::WindowsXp => false,
-            ColorScheme::Matrix => true,
+            ColorScheme::Daylight => false,
+            ColorScheme::Classic => false,
+            ColorScheme::Sky => false,
+            ColorScheme::Phosphor => true,
         }
     }
 
     /// Look a scheme up by name, ignoring case, spaces and punctuation
-    /// ("Windows 98", "windows98", "win98", "mac", "dark", ...).
+    /// ("Daylight", "daylight", "light", "dark", ...).
     pub fn from_name(name: &str) -> Option<ColorScheme> {
         let key: String = name
             .chars()
@@ -57,11 +57,11 @@ impl ColorScheme {
             .collect();
         Some(match key.as_str() {
             "dark" | "darkmode" => ColorScheme::DarkMode,
-            "purple" | "purpledreams" | "snes" | "retro" => ColorScheme::PurpleDreams,
-            "mac" | "macos" | "macosx" | "osx" | "light" => ColorScheme::MacOsX,
-            "windows98" | "win98" | "98" => ColorScheme::Windows98,
-            "windowsxp" | "winxp" | "xp" => ColorScheme::WindowsXp,
-            "matrix" => ColorScheme::Matrix,
+            "purple" | "purpledreams" => ColorScheme::PurpleDreams,
+            "daylight" | "light" => ColorScheme::Daylight,
+            "classic" => ColorScheme::Classic,
+            "sky" => ColorScheme::Sky,
+            "phosphor" => ColorScheme::Phosphor,
             _ => return None,
         })
     }
@@ -101,7 +101,7 @@ impl ColorScheme {
                 danger: rgb(255, 120, 130),
                 radius: 4,
             },
-            ColorScheme::MacOsX => UiPalette {
+            ColorScheme::Daylight => UiPalette {
                 panel: rgb(236, 236, 236),
                 window: rgb(246, 246, 246),
                 canvas: rgb(214, 216, 220),
@@ -116,7 +116,7 @@ impl ColorScheme {
                 danger: rgb(200, 40, 40),
                 radius: 6,
             },
-            ColorScheme::Windows98 => UiPalette {
+            ColorScheme::Classic => UiPalette {
                 panel: rgb(192, 192, 192),
                 window: rgb(192, 192, 192),
                 canvas: rgb(128, 128, 128),
@@ -131,7 +131,7 @@ impl ColorScheme {
                 danger: rgb(170, 0, 0),
                 radius: 0,
             },
-            ColorScheme::WindowsXp => UiPalette {
+            ColorScheme::Sky => UiPalette {
                 panel: rgb(236, 233, 216),
                 window: rgb(245, 243, 231),
                 canvas: rgb(172, 168, 153),
@@ -146,7 +146,7 @@ impl ColorScheme {
                 danger: rgb(190, 30, 30),
                 radius: 3,
             },
-            ColorScheme::Matrix => UiPalette {
+            ColorScheme::Phosphor => UiPalette {
                 panel: rgb(2, 8, 2),
                 window: rgb(4, 14, 4),
                 canvas: Color32::BLACK,
@@ -319,7 +319,7 @@ impl ColorScheme {
                 indicator: Color32::from_rgb(200, 180, 255),
                 hover_boost: 25,
             },
-            ColorScheme::MacOsX => ThemeColors {
+            ColorScheme::Daylight => ThemeColors {
                 dir_base: [24, 88, 178],
                 dir_range: [20, 20, 30],
                 file_base: [176, 184, 194],
@@ -331,7 +331,7 @@ impl ColorScheme {
                 indicator: Color32::from_rgb(30, 30, 30),
                 hover_boost: 20,
             },
-            ColorScheme::Windows98 => ThemeColors {
+            ColorScheme::Classic => ThemeColors {
                 dir_base: [0, 0, 128],
                 dir_range: [20, 20, 40],
                 file_base: [0, 120, 120],
@@ -343,7 +343,7 @@ impl ColorScheme {
                 indicator: Color32::from_rgb(255, 255, 0),
                 hover_boost: 35,
             },
-            ColorScheme::WindowsXp => ThemeColors {
+            ColorScheme::Sky => ThemeColors {
                 dir_base: [0, 78, 152],
                 dir_range: [30, 30, 40],
                 file_base: [55, 126, 34],
@@ -355,7 +355,7 @@ impl ColorScheme {
                 indicator: Color32::WHITE,
                 hover_boost: 25,
             },
-            ColorScheme::Matrix => ThemeColors {
+            ColorScheme::Phosphor => ThemeColors {
                 dir_base: [0, 70, 0],
                 dir_range: [10, 40, 10],
                 file_base: [0, 50, 0],
@@ -526,14 +526,14 @@ mod tests {
     fn dark_schemes_identified() {
         assert!(ColorScheme::DarkMode.is_dark());
         assert!(ColorScheme::PurpleDreams.is_dark());
-        assert!(ColorScheme::Matrix.is_dark());
+        assert!(ColorScheme::Phosphor.is_dark());
     }
 
     #[test]
     fn light_schemes_identified() {
-        assert!(!ColorScheme::MacOsX.is_dark());
-        assert!(!ColorScheme::Windows98.is_dark());
-        assert!(!ColorScheme::WindowsXp.is_dark());
+        assert!(!ColorScheme::Daylight.is_dark());
+        assert!(!ColorScheme::Classic.is_dark());
+        assert!(!ColorScheme::Sky.is_dark());
     }
 
     #[test]
@@ -575,7 +575,7 @@ mod tests {
 
     #[test]
     fn dir_color_deterministic() {
-        let theme = ColorScheme::Matrix.theme();
+        let theme = ColorScheme::Phosphor.theme();
         let c1 = theme.color_for_node("src", true);
         let c2 = theme.color_for_node("src", true);
         assert_eq!(c1, c2);
@@ -593,7 +593,7 @@ mod tests {
 
     #[test]
     fn hover_color_saturates_at_255() {
-        let theme = ColorScheme::Windows98.theme(); // hover_boost = 35
+        let theme = ColorScheme::Classic.theme(); // hover_boost = 35
         let base = Color32::from_rgb(240, 240, 240);
         let hover = theme.hover_color(base);
         assert_eq!(hover.r(), 255);
@@ -619,10 +619,13 @@ mod tests {
         for &scheme in ColorScheme::ALL {
             assert!(ColorScheme::from_name(scheme.name()) == Some(scheme));
         }
-        assert!(ColorScheme::from_name("win98") == Some(ColorScheme::Windows98));
+        assert!(ColorScheme::from_name("classic") == Some(ColorScheme::Classic));
         assert!(ColorScheme::from_name("purple-dreams") == Some(ColorScheme::PurpleDreams));
-        assert!(ColorScheme::from_name("snes") == Some(ColorScheme::PurpleDreams));
-        assert!(ColorScheme::from_name("MAC-OS-X") == Some(ColorScheme::MacOsX));
+        assert!(ColorScheme::from_name("LIGHT") == Some(ColorScheme::Daylight));
+        // Old names that referenced other products are gone.
+        for old in ["win98", "winxp", "mac", "matrix", "snes"] {
+            assert!(ColorScheme::from_name(old).is_none(), "{old}");
+        }
         assert!(ColorScheme::from_name("nope").is_none());
     }
 
