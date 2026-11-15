@@ -1,17 +1,17 @@
 use eframe::egui;
 use eframe::egui::{Color32, CornerRadius, FontId, Rect, Sense, Stroke, StrokeKind};
-use eframe::emath::{Align2, pos2};
+use eframe::emath::{pos2, Align2};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::mpsc;
+use std::sync::Arc;
 
-use alocir_shared::context_menu::{DeferredAction, build_context_menu};
+use alocir_shared::context_menu::{build_context_menu, DeferredAction};
 use alocir_shared::file_ops::{open_path, open_terminal, reveal_in_file_manager};
-use alocir_shared::scanner::{FileNode, ScanProgress, format_size};
-use alocir_shared::settings::{SettingsState, show_settings_window};
+use alocir_shared::scanner::{format_size, FileNode, ScanProgress};
+use alocir_shared::settings::{show_settings_window, SettingsState};
 use alocir_shared::theme::ThemeColors;
 use alocir_shared::treemap::squarify;
 
@@ -40,10 +40,20 @@ pub struct SpaceSnifferApp {
 }
 
 impl SpaceSnifferApp {
-    pub fn new(path: PathBuf, excluded: HashSet<PathBuf>, settings: SettingsState, ctx: &egui::Context) -> Self {
+    pub fn new(
+        path: PathBuf,
+        excluded: HashSet<PathBuf>,
+        settings: SettingsState,
+        ctx: &egui::Context,
+    ) -> Self {
         let root_path = path.to_string_lossy().to_string();
         let progress = Arc::new(ScanProgress::new());
-        FileNode::scan_async(path.clone(), Arc::clone(&progress), excluded.clone(), ctx.clone());
+        FileNode::scan_async(
+            path.clone(),
+            Arc::clone(&progress),
+            excluded.clone(),
+            ctx.clone(),
+        );
         SpaceSnifferApp {
             root: None,
             root_path,
@@ -297,7 +307,8 @@ impl SpaceSnifferApp {
         for &idx in &self.nav_stack {
             node = &mut node.children[idx];
         }
-        node.children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
+        node.children
+            .sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
     }
 
     fn trigger_rescan(&mut self, ctx: &egui::Context) {
@@ -306,7 +317,12 @@ impl SpaceSnifferApp {
         self.scan_progress = Arc::clone(&progress);
         self.scanning = true;
         self.scan_duration = None;
-        FileNode::scan_async(self.scan_path.clone(), progress, self.excluded.clone(), ctx.clone());
+        FileNode::scan_async(
+            self.scan_path.clone(),
+            progress,
+            self.excluded.clone(),
+            ctx.clone(),
+        );
     }
 
     fn do_trash(&mut self, path: PathBuf, _ctx: &egui::Context) {
@@ -386,7 +402,11 @@ impl SpaceSnifferApp {
                 } else {
                     current
                 };
-                ui.label(egui::RichText::new(display_path).small().color(Color32::GRAY));
+                ui.label(
+                    egui::RichText::new(display_path)
+                        .small()
+                        .color(Color32::GRAY),
+                );
             });
         });
     }
@@ -552,8 +572,7 @@ impl SpaceSnifferApp {
                     .iter()
                     .map(|item| {
                         let child = &node.children[item.index];
-                        let color =
-                            theme.color_for_node(&child.name, child.is_dir);
+                        let color = theme.color_for_node(&child.name, child.is_dir);
                         (
                             item.rect,
                             color,
@@ -603,13 +622,7 @@ impl SpaceSnifferApp {
                 let item_is_dir = *is_dir;
                 let deferred_ref = &deferred;
                 response.context_menu(|ui| {
-                    build_context_menu(
-                        ui,
-                        deferred_ref,
-                        &item_path,
-                        &item_name,
-                        item_is_dir,
-                    );
+                    build_context_menu(ui, deferred_ref, &item_path, &item_name, item_is_dir);
                 });
 
                 render_items.push(RenderItem {
@@ -646,8 +659,7 @@ impl SpaceSnifferApp {
 
                 if item.inner.width() >= 30.0 && item.inner.height() >= 20.0 {
                     let center = item.inner.center();
-                    let fs =
-                        (item.inner.width().min(item.inner.height()) * 0.12).clamp(9.0, 16.0);
+                    let fs = (item.inner.width().min(item.inner.height()) * 0.12).clamp(9.0, 16.0);
                     let font = FontId::proportional(fs);
 
                     let max_chars = (item.inner.width() / (fs * 0.5)) as usize;

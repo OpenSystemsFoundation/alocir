@@ -39,8 +39,7 @@ impl eframe::App for App {
                         ui.heading("Alocir Explorer");
                         ui.add_space(4.0);
                         ui.label(
-                            egui::RichText::new("Fast file explorer")
-                                .color(egui::Color32::GRAY),
+                            egui::RichText::new("Fast file explorer").color(egui::Color32::GRAY),
                         );
                         ui.add_space(32.0);
 
@@ -62,9 +61,10 @@ impl eframe::App for App {
 
                 PENDING_PATH.with(|p| {
                     if let Some(path) = p.borrow_mut().take() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(
-                            format!("Alocir Explorer - {}", path.display()),
-                        ));
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Title(format!(
+                            "Alocir Explorer - {}",
+                            path.display()
+                        )));
                         transition = Some(AppState::Exploring(ExplorerApp::new(path)));
                     }
                 });

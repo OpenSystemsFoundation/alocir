@@ -21,10 +21,7 @@ pub fn squarify(items: &[(usize, f64)], bounds: Rect) -> Vec<TreemapItem> {
     let area = (bounds.width() as f64) * (bounds.height() as f64);
 
     // Normalize sizes so they sum to the total area
-    let normalized: Vec<(usize, f64)> = items
-        .iter()
-        .map(|(i, s)| (*i, s / total * area))
-        .collect();
+    let normalized: Vec<(usize, f64)> = items.iter().map(|(i, s)| (*i, s / total * area)).collect();
 
     let mut result = Vec::with_capacity(items.len());
     layout_recursive(&normalized, bounds, &mut result);
@@ -89,26 +86,17 @@ fn layout_recursive(items: &[(usize, f64)], bounds: Rect, out: &mut Vec<TreemapI
 
         let rect = if horizontal {
             Rect::from_min_size(
-                pos2(
-                    bounds.min.x,
-                    bounds.min.y + offset as f32,
-                ),
+                pos2(bounds.min.x, bounds.min.y + offset as f32),
                 vec2(row_thickness as f32, item_length as f32),
             )
         } else {
             Rect::from_min_size(
-                pos2(
-                    bounds.min.x + offset as f32,
-                    bounds.min.y,
-                ),
+                pos2(bounds.min.x + offset as f32, bounds.min.y),
                 vec2(item_length as f32, row_thickness as f32),
             )
         };
 
-        out.push(TreemapItem {
-            index: idx,
-            rect,
-        });
+        out.push(TreemapItem { index: idx, rect });
 
         offset += item_length;
     }

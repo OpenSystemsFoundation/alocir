@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use alocir_shared::context_menu::{DeferredAction, build_context_menu};
+use alocir_shared::context_menu::{build_context_menu, DeferredAction};
 use alocir_shared::file_ops::{open_path, open_terminal, reveal_in_file_manager};
 use alocir_shared::scanner::format_size;
 
@@ -163,7 +163,11 @@ impl FolderTree {
         ui.horizontal(|ui| {
             // Expand/collapse arrow
             if expandable {
-                let arrow = if node.expanded { "\u{25BC}" } else { "\u{25B6}" };
+                let arrow = if node.expanded {
+                    "\u{25BC}"
+                } else {
+                    "\u{25B6}"
+                };
                 if ui.add(egui::Button::new(arrow).frame(false)).clicked() {
                     node.expanded = !node.expanded;
                     if node.expanded {
@@ -186,10 +190,8 @@ impl FolderTree {
             } else {
                 Color32::from_rgb(100, 180, 255)
             };
-            let label = egui::Label::new(
-                egui::RichText::new(&label_text).color(color).strong(),
-            )
-            .sense(egui::Sense::click());
+            let label = egui::Label::new(egui::RichText::new(&label_text).color(color).strong())
+                .sense(egui::Sense::click());
 
             let resp = ui.add(label);
             if resp.clicked() {
@@ -267,7 +269,10 @@ fn sort_entries(entries: &mut [DirEntry], col: SortColumn, dir: SortDir) {
         let ord = match col {
             SortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
             SortColumn::Size => a.size.cmp(&b.size),
-            SortColumn::Type => a.extension().to_lowercase().cmp(&b.extension().to_lowercase()),
+            SortColumn::Type => a
+                .extension()
+                .to_lowercase()
+                .cmp(&b.extension().to_lowercase()),
             SortColumn::Modified => a.modified.unwrap_or(0).cmp(&b.modified.unwrap_or(0)),
         };
         match dir {
@@ -469,16 +474,40 @@ impl ExplorerApp {
             // Column headers
             ui.horizontal(|ui| {
                 let w = ui.available_width();
-                if column_header(ui, "Name", w * 0.40, self.sort_col == SortColumn::Name, self.sort_dir) {
+                if column_header(
+                    ui,
+                    "Name",
+                    w * 0.40,
+                    self.sort_col == SortColumn::Name,
+                    self.sort_dir,
+                ) {
                     self.toggle_sort(SortColumn::Name);
                 }
-                if column_header(ui, "Size", w * 0.15, self.sort_col == SortColumn::Size, self.sort_dir) {
+                if column_header(
+                    ui,
+                    "Size",
+                    w * 0.15,
+                    self.sort_col == SortColumn::Size,
+                    self.sort_dir,
+                ) {
                     self.toggle_sort(SortColumn::Size);
                 }
-                if column_header(ui, "Type", w * 0.15, self.sort_col == SortColumn::Type, self.sort_dir) {
+                if column_header(
+                    ui,
+                    "Type",
+                    w * 0.15,
+                    self.sort_col == SortColumn::Type,
+                    self.sort_dir,
+                ) {
                     self.toggle_sort(SortColumn::Type);
                 }
-                if column_header(ui, "Modified", w * 0.28, self.sort_col == SortColumn::Modified, self.sort_dir) {
+                if column_header(
+                    ui,
+                    "Modified",
+                    w * 0.28,
+                    self.sort_col == SortColumn::Modified,
+                    self.sort_dir,
+                ) {
                     self.toggle_sort(SortColumn::Modified);
                 }
             });
@@ -527,8 +556,10 @@ impl ExplorerApp {
                                 format_size(entry.size)
                             };
                             ui.add(
-                                egui::Label::new(egui::RichText::new(&size_str).color(Color32::GRAY))
-                                    .truncate(),
+                                egui::Label::new(
+                                    egui::RichText::new(&size_str).color(Color32::GRAY),
+                                )
+                                .truncate(),
                             );
                             let used2 = ui.min_rect().width();
                             if used2 < col_name_w + col_size_w {
@@ -546,8 +577,10 @@ impl ExplorerApp {
                                 }
                             };
                             ui.add(
-                                egui::Label::new(egui::RichText::new(&type_str).color(Color32::GRAY))
-                                    .truncate(),
+                                egui::Label::new(
+                                    egui::RichText::new(&type_str).color(Color32::GRAY),
+                                )
+                                .truncate(),
                             );
                             let used3 = ui.min_rect().width();
                             if used3 < col_name_w + col_size_w + col_type_w {
