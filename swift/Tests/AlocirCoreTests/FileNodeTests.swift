@@ -25,7 +25,11 @@ import Testing
 
     @Test func rootSlashIsNotDoubled() {
         let leaf = FileNode(name: "Users", isDirectory: true)
-        _ = FileNode(name: "/", isDirectory: true, children: [leaf])
-        #expect(leaf.path == "/Users")
+        // `parent` is unowned(unsafe): the root must stay alive while its
+        // children are used, so hold it for the whole test.
+        let root = FileNode(name: "/", isDirectory: true, children: [leaf])
+        withExtendedLifetime(root) {
+            #expect(leaf.path == "/Users")
+        }
     }
 }
