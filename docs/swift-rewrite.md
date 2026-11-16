@@ -12,7 +12,7 @@ Swift app that:
 - puts performance first: scan speed, memory per file, and a treemap that
   stays at display refresh rate with millions of files scanned;
 - looks and behaves like a first-party macOS app, using the system glass
-  design (Liquid Glass, macOS 26 and later);
+  design (Liquid Glass), and requires macOS 27;
 - adds the four features the Rust app lacks: a **nested treemap**, **search
   and filter**, **persistent settings and recent folders**, and **keyboard
   navigation between tiles**;
@@ -49,7 +49,7 @@ Work like this instead:
    README again before writing the job, since a preview label can change. If
    no hosted runner has Xcode 27, stop and tell the human; do not fall back
    to the 26 SDK or change the deployment target to make CI pass.
-3. **Do not trust your memory of macOS 26 APIs.** Confirm every glass-related
+3. **Do not trust your memory of macOS 26 or 27 APIs.** Confirm every glass-related
    API against Apple's documentation, and let the compiler in CI settle it.
    The human's Mac has Xcode 27.2, Swift 6.4.2 and the macOS 27.2 SDK; these
    were confirmed present in that SDK: `GlassButtonStyle` (`.glass`,
@@ -117,7 +117,7 @@ runs it without Xcode's build system.
 | Item | Value |
 |---|---|
 | Build SDK | macOS 27 (Xcode 27), the newest |
-| Deployment target | macOS 26.0. Guard any macOS 27-only API with `if #available` |
+| Deployment target | macOS 27.0. No availability checks for older systems |
 | Language | Swift 6 language mode, complete strict concurrency |
 | UI | SwiftUI. AppKit only where SwiftUI has no equivalent |
 | State | `@Observable` models; no `ObservableObject`, no Combine |
@@ -516,7 +516,6 @@ Carry on with the default; list these in the PR.
 | Question | Default taken |
 |---|---|
 | Does 2.0 replace the Rust app on the store under the same record? | Yes |
-| Minimum macOS 26, dropping older systems the Rust app supported (11+)? | Yes; glass needs it |
-| Raise the minimum to macOS 27? | No; build with the 27 SDK, run on 26 and later |
+| Minimum macOS 27, dropping older systems the Rust app supported (11+)? | Yes; decided by the maintainer on 2026-11-16 |
 | Keep a non-sandboxed Developer ID build on GitHub Releases? | No; one sandboxed build |
 | Keep Intel support? | Yes, if the SDK allows |
