@@ -130,6 +130,10 @@ else
     cargo build "${CARGO_ARGS[@]}"
 fi
 
+# App Review rejects binaries that use private APIs (1.0.0 was rejected for
+# one in winit). Stop here, before signing, notarizing or uploading.
+"$SCRIPT_DIR/check-private-apis.sh" "$BUILD_DIR/alocir"
+
 echo "==> Creating app bundle..."
 rm -rf "$BUNDLE_DIR"
 mkdir -p "$BUNDLE_DIR/Contents/MacOS"

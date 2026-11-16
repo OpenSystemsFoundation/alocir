@@ -47,6 +47,7 @@ A Cargo workspace with three crates:
 - **Platform conditionals**: `file_ops.rs` and `context_menu.rs` use `cfg!(target_os = ...)` for macOS/Windows/Linux behaviour.
 - **No third-party names**: theme names, UI text and store text stay generic. Don't name other products, operating systems or apps (App Review flags it as an intellectual-property issue).
 - **Mac App Store build**: the `app-store` Cargo feature hides what the App Sandbox blocks ("Open Terminal Here", "Scan Home Folder") and trashes through `NSFileManager`. See `docs/mac-app-store.md`.
+- **No private APIs**: App Review rejects binaries that import private functions or name undocumented selectors (1.0.0 was rejected for one in winit). `vendor/winit` is winit 0.30.12 with those removed, used through `[patch.crates-io]`; see `vendor/winit/ALOCIR.md` before changing eframe or winit versions. `build-macos.sh` runs `scripts/check-private-apis.sh` on every build.
 
 ### Dependencies
 
@@ -70,6 +71,7 @@ cargo fmt --all                            # Format (CI fails on unformatted cod
 cargo clippy --workspace --all-targets -- -D warnings                 # Lint, as CI does
 cargo clippy -p alocir --features app-store --all-targets -- -D warnings  # Lint the store build
 ./scripts/build-macos.sh --universal       # macOS .app bundle (see the script header for signing options)
+./scripts/check-private-apis.sh target/release/Alocir.app  # Scan a macOS build for private APIs, as App Review does
 ```
 
 Linux requires system dependencies:
