@@ -40,10 +40,15 @@ Work like this instead:
    and builds the app with `xcodebuild`. Push, then read the result with
    `gh run watch` / `gh run view --log-failed`. Nothing counts as done until
    that job is green.
-2. **Check which macOS runner image has Xcode 26 or later** before writing
-   the job (the `actions/runner-images` repository lists them). The app needs
-   the macOS 26 SDK at minimum. If no hosted runner has it, stop and tell the
-   human; do not lower the deployment target to make CI pass.
+2. **Build with the macOS 27 SDK (Xcode 27), the newest.** Checked on
+   2026-11-16: `macos-latest` is the macOS 26 image, whose newest Xcode is
+   26.6 with the macOS 26.5 SDK, so it is not enough. GitHub lists a separate
+   image with the labels `xcode-27` and `xcode-27-xlarge`, marked preview.
+   Use `runs-on: xcode-27` for the Swift job and print `xcodebuild -version`
+   and the SDK version as its first step. Check the `actions/runner-images`
+   README again before writing the job, since a preview label can change. If
+   no hosted runner has Xcode 27, stop and tell the human; do not fall back
+   to the 26 SDK or change the deployment target to make CI pass.
 3. **Do not trust your memory of macOS 26 APIs.** Confirm every glass-related
    API against Apple's documentation, and let the compiler in CI settle it.
    The human's Mac has Xcode 27.2, Swift 6.4.2 and the macOS 27.2 SDK; these
@@ -111,7 +116,8 @@ runs it without Xcode's build system.
 
 | Item | Value |
 |---|---|
-| Deployment target | macOS 26.0 |
+| Build SDK | macOS 27 (Xcode 27), the newest |
+| Deployment target | macOS 26.0. Guard any macOS 27-only API with `if #available` |
 | Language | Swift 6 language mode, complete strict concurrency |
 | UI | SwiftUI. AppKit only where SwiftUI has no equivalent |
 | State | `@Observable` models; no `ObservableObject`, no Combine |
@@ -511,5 +517,6 @@ Carry on with the default; list these in the PR.
 |---|---|
 | Does 2.0 replace the Rust app on the store under the same record? | Yes |
 | Minimum macOS 26, dropping older systems the Rust app supported (11+)? | Yes; glass needs it |
+| Raise the minimum to macOS 27? | No; build with the 27 SDK, run on 26 and later |
 | Keep a non-sandboxed Developer ID build on GitHub Releases? | No; one sandboxed build |
 | Keep Intel support? | Yes, if the SDK allows |
