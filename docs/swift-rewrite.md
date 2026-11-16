@@ -440,8 +440,36 @@ grammar and the bulk-versus-`lstat` size check.
 
 `alocir-scan PATH` prints item count, total bytes and elapsed time. In CI,
 run it and the Rust `scan_total` example on the same generated tree and fail
-if the totals differ. Report both timings in the PR. Do not claim a speed-up
-that CI did not measure.
+if the totals differ. CI checks correctness only: hosted runners are shared
+virtual machines with small, empty disks, so their timings say nothing about
+a real Mac. Do not quote them as results and do not claim a speed-up.
+
+### Benchmark gate: stop after milestone 3
+
+A cloud session cannot run or simulate a Mac, so it cannot benchmark. When
+milestone 3 is green, **stop and hand over to the human.** Do not start
+milestone 4 until they reply with results.
+
+Before stopping:
+
+- Add `swift/scripts/bench.sh`. It builds `alocir-scan` and the Rust
+  `scan_total` example in release mode, runs each three times on the path
+  given (once to warm the cache, then timed), and prints item count, total
+  bytes, wall time and peak memory (`/usr/bin/time -l`) for both, side by
+  side. It also times the nested layout on the scanned tree at 1600×1000.
+- Post a PR comment with the exact commands to run on the Mac, for a home
+  folder and for `/`, and what to paste back.
+
+When the results come back:
+
+- Totals must match the Rust scanner, and `/` must match `df` as closely as
+  the Rust app does.
+- If the Swift scanner is not faster than the Rust one, or uses more memory
+  per file, fix that before any UI work. The engine is the reason for the
+  rewrite.
+
+Frame rate and animation cannot be measured from a cloud session either.
+They stay on the manual list in section 11.
 
 ## 10. Order of work
 
@@ -451,6 +479,8 @@ Each milestone ends with a push and a green macOS job.
 1. **Engine: tree, reader, scanner**, tests, `alocir-scan`, totals check.
 2. **Engine: live tree, FSEvents**, ported reconcile tests.
 3. **Engine: nested layout, hit test, key moves, search**, tests.
+   **Then stop for the benchmark gate (section 9).** Continue only after the
+   human posts results from a real Mac.
 4. **App shell:** scenes, session, start and scanning screens, sandboxed
    folder access, recents.
 5. **Map:** canvas, overlays, zoom, breadcrumb, status capsule.
