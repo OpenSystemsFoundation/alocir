@@ -76,11 +76,21 @@ for binary in "${binaries[@]}"; do
         found=1
     done < <(otool -L "$binary" | awk 'NR > 1 {print $1}' | grep '/PrivateFrameworks/' | sort -u || true)
 
+    # Only the sections App Review reads names from: Objective-C selector
+    # names (__objc_methname) and C strings (__cstring, where dlsym names
+    # live). Swift's reflection metadata (__swift5_reflstr) holds property
+    # names such as `_isSearching` that @Observable generates; they are not
+    # selectors.
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
         report "private function or selector named in the binary: $name"
         found=1
-    done < <(strings -a "$binary" | sort -u | grep -E \
+    done < <(for arch in $(lipo -archs "$binary"); do
+            for section in __objc_methname __cstring; do
+                otool -arch "$arch" -X -v -s __TEXT "$section" "$binary" 2>/dev/null \
+                    | sed -E 's/^[0-9a-f]+[[:space:]]+//'
+            done
+        done | sort -u | grep -E \
         -e '^_[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*(:([A-Za-z0-9]+:)*)?$' \
         -e '^(CGS|SLS|CPS)[A-Z][A-Za-z]+$' \
         -e "$DENY_SELECTORS" | awk 'length >= 8' || true)
