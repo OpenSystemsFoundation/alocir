@@ -54,7 +54,12 @@ for scene in $scenes; do
         if [ -n "$pid" ]; then
             echo "    main thread of $pid:"
             sample "$pid" 2 -file "$out/$scene-sample.txt" >/dev/null 2>&1
-            grep -m1 -A40 'Thread_.*DispatchQueue_1\|Thread_.*main' "$out/$scene-sample.txt" | sed 's/^/    /' | cut -c1-160
+            # Named frames of the main thread's call tree, then the hottest
+            # leaf functions.
+            sed -n '/DispatchQueue_1/,/^ *[0-9]* Thread_/p' "$out/$scene-sample.txt" \
+                | grep -v '???' | sed -E 's/^[ +!:|]*//' | awk '!seen[$0]++' | head -120 | sed 's/^/    /' | cut -c1-180
+            echo "    hottest frames:"
+            sed -n '/Sort by top of stack/,/^$/p' "$out/$scene-sample.txt" | head -25 | sed 's/^/    /'
         else
             echo "    the app is no longer running"
         fi
