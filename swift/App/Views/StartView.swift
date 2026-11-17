@@ -44,7 +44,9 @@ struct StartView: View {
 
     private var hero: some View {
         VStack(spacing: 12) {
-            Image(nsImage: NSApp.applicationIconImage)
+            // A bundled copy of the icon: NSApp.applicationIconImage asks the
+            // icon service synchronously, which can stall the first window.
+            Image("Logo")
                 .resizable()
                 .frame(width: 112, height: 112)
                 .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
