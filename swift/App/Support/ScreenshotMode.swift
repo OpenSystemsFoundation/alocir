@@ -72,8 +72,13 @@ enum ScreenshotMode {
         }
         window.setContentSize(windowSize)
         window.center()
-        window.makeKeyAndOrderFront(nil)
+        // Launched from a script, the app starts behind the frontmost one;
+        // an inactive window draws its controls dimmed.
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSRunningApplication.current.activate(options: [.activateAllWindows])
         NSApplication.shared.activate()
+        window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
 
         let tree = session.tree
         switch scene {
@@ -95,6 +100,9 @@ enum ScreenshotMode {
         }
 
         try? await Task.sleep(for: .seconds(2))
+        if !NSApplication.shared.isActive {
+            print("ALOCIR_NOTE=not active")
+        }
 
         switch scene {
         case "settings":

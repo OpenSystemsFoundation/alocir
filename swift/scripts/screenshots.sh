@@ -14,13 +14,15 @@ scenes=$(grep -o '"[a-z-]*"' "$(dirname "$0")/../App/Support/ScreenshotMode.swif
 failed=0
 for scene in $scenes; do
     log="$out/$scene.log"
-    "$binary" -screenshot "$scene" -ApplePersistenceIgnoreState YES >"$log" 2>&1 &
-    pid=$!
+    : >"$log"
+    # Through Launch Services, so the app comes to the front like a real
+    # launch: an inactive window draws its controls dimmed.
+    open -n -F --stdout "$log" --stderr "$log" "$app" \
+        --args -screenshot "$scene" -ApplePersistenceIgnoreState YES
     line=""
     for _ in $(seq 1 300); do
-        line=$(grep -m1 '^ALOCIR_' "$log" 2>/dev/null || true)
+        line=$(grep -m1 -E '^ALOCIR_(WINDOW|ERROR)' "$log" 2>/dev/null || true)
         [ -n "$line" ] && break
-        kill -0 "$pid" 2>/dev/null || break
         sleep 0.1
     done
     if [[ "$line" == ALOCIR_WINDOW=* ]]; then
@@ -35,7 +37,6 @@ for scene in $scenes; do
         fi
         if [ -s "$out/$scene.png" ]; then
             echo "captured $scene"
-            rm -f "$log"
         else
             echo "::warning::screencapture produced nothing for $scene"
             failed=1
@@ -45,7 +46,8 @@ for scene in $scenes; do
         sed 's/^/    /' "$log" | tail -20
         failed=1
     fi
-    kill "$pid" 2>/dev/null
-    wait "$pid" 2>/dev/null
+    grep '^ALOCIR_NOTE' "$log" | sed "s/^/    $scene: /"
+    pkill -f "$binary" 2>/dev/null
+    for _ in $(seq 1 50); do pgrep -f "$binary" >/dev/null || break; sleep 0.1; done
 done
 exit $failed

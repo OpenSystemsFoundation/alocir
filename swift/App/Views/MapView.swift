@@ -13,7 +13,6 @@ struct MapView: View {
     var body: some View {
         @Bindable var settings = settings
         TreemapArea(session: session, tree: tree)
-            .ignoresSafeArea(.container, edges: .top)
             .overlay(alignment: .bottom) {
                 StatusCapsule(session: session, tree: tree)
                     .padding(.bottom, 16)

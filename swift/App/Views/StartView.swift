@@ -23,7 +23,8 @@ struct StartView: View {
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                    .frame(maxWidth: 460)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 520)
             }
             .padding(40)
             if dropTargeted {
