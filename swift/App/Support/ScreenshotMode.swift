@@ -47,6 +47,8 @@ enum ScreenshotMode {
     /// and reports the window to capture.
     static func stage(_ session: Session, openSettings: OpenSettingsAction) async {
         guard isActive, session.isIdle else { return }
+        print("ALOCIR_STAGE=\(scene ?? "") uptime=\(Int(ProcessInfo.processInfo.systemUptime))")
+        fflush(stdout)
         let root = DemoData.homeFolder()
         let scene = baseScene
 

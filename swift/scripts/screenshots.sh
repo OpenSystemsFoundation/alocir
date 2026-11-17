@@ -11,6 +11,7 @@ mkdir -p "$out"
 scenes=$(grep -o '"[a-z-]*"' "$(dirname "$0")/../App/Support/ScreenshotMode.swift" \
     | sed -n '/"start"/,/"settings-dark"/p' | tr -d '"')
 
+timeout="${SCREENSHOT_TIMEOUT:-120}"
 failed=0
 for scene in $scenes; do
     log="$out/$scene.log"
@@ -20,7 +21,9 @@ for scene in $scenes; do
     open -n -F --stdout "$log" --stderr "$log" "$app" \
         --args -screenshot "$scene" -ApplePersistenceIgnoreState YES
     line=""
-    for _ in $(seq 1 300); do
+    # Slow runners (Intel, no GPU) can take most of a minute to draw the
+    # first window.
+    for _ in $(seq 1 $((timeout * 10))); do
         line=$(grep -m1 -E '^ALOCIR_(WINDOW|ERROR)' "$log" 2>/dev/null || true)
         [ -n "$line" ] && break
         sleep 0.1
@@ -42,7 +45,7 @@ for scene in $scenes; do
             failed=1
         fi
     else
-        echo "::warning::$scene did not report a window: ${line:-no output}"
+        echo "::warning::$scene did not report a window within ${timeout}s: ${line:-no output}"
         sed 's/^/    /' "$log" | tail -20
         failed=1
     fi
