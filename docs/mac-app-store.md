@@ -21,6 +21,31 @@ permanent now that the App Store Connect app record uses it).
 | B7–B9: listing, review notes, submission | ✅ 1.0.0 (build 24) submitted 2026-11-15 |
 | Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Needs a new build uploaded and resubmitted. |
 
+## 2.0.0: the native Swift app
+
+From 2.0.0 the store app is the SwiftUI app in `swift/` (plan:
+`docs/swift-rewrite.md`), built with Xcode 27 for macOS 27. Same bundle ID,
+team, certificates and profile as above; the version is 2.0.0 and build
+numbers continue from 25 (`CURRENT_PROJECT_VERSION`). It is arm64 only,
+because the macOS 27 SDK no longer builds for Intel. The Rust store path below
+stays as it is until 2.0.0 replaces it.
+
+1. On the release Mac, with the signing material in `~/.alocir-signing/`:
+   `BUILD_NUMBER=26 swift/scripts/archive.sh`. It archives with the
+   "Apple Distribution" certificate and the "Alocir Mac App Store" profile,
+   exports a package signed with "3rd Party Mac Developer Installer",
+   checks the signature and sandbox, and runs `scripts/check-private-apis.sh`.
+   It never uploads.
+2. Test the archived app (`swift/build/archive/Alocir.xcarchive`) against the
+   manual list in the 2.0.0 pull request.
+3. Upload the package yourself (Transporter or `xcrun altool --upload-app`),
+   then update the listing: new screenshots (the CI `screenshots` artifact is
+   a starting point), "What's New", and the review notes.
+
+The app icon is the flat `assets/logo.svg` rendered to PNGs. A layered icon
+made in Icon Composer, which macOS 27 shows with glass effects, is still to
+do.
+
 ### Private APIs (guideline 2.5.1)
 
 App Review scans the binary's imported symbols and Objective-C selector names

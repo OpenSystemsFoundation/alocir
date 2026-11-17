@@ -93,6 +93,18 @@ baseline with `-- --save-baseline before` and compare later runs with
 comment at the top of the script documents every option, including the Mac App
 Store build (`--app-store`), described in [docs/mac-app-store.md](docs/mac-app-store.md).
 
+#### Native macOS app (2.0)
+
+The Mac App Store version is a native SwiftUI app for macOS 27, in `swift/`.
+It needs Xcode 27.
+
+```bash
+cd swift
+swift test                       # engine tests
+open Alocir.xcodeproj            # build and run the app
+./scripts/bench.sh --runs 5 ~    # compare the Swift and Rust scanners
+```
+
 ## Usage
 
 1. Launch the app and **choose a folder** (or drop one onto the window, or use **Scan Home Folder**)

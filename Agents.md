@@ -80,6 +80,31 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
   libxkbcommon-dev libgtk-3-dev
 ```
 
+## Native macOS app (2.0, `swift/`)
+
+From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite for macOS 27 with Liquid Glass. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows and Linux; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
+
+| Path | Purpose |
+|------|---------|
+| `swift/Package.swift` | `AlocirCore` library, `alocir-scan` command, tests (Swift 6, strict concurrency, no package dependencies) |
+| `swift/Sources/AlocirCore/` | `DirectoryReader` (`getattrlistbulk`, `readdir` fallback), `DiskScanner`, `FileNode`, `LiveTree` + `FSEventsWatcher` (live reconciling, ported from `app.rs`), `Treemap` (nested squarify, hit testing, arrow-key moves), `Search`, `FolderSummary`, `Formatting` |
+| `swift/Alocir.xcodeproj` | The app target. `App/` is a synchronized folder: every Swift file in it compiles |
+| `swift/App/Model/` | `Session` (one per window: phase, navigation, file actions), `AppSettings`, `RecentFolders` (security-scoped bookmarks), `Palette` |
+| `swift/App/Views/` | Start, scanning, map (`TreemapCanvas` draws with one `Canvas`), inspector, settings, context menu and rename sheet |
+| `swift/App/Support/` | `DemoData` and `ScreenshotMode` (`Alocir -screenshot <scene>`, used by CI) |
+| `swift/scripts/` | `ci.sh`, `compare-totals.sh`, `bench.sh`, `screenshots.sh`, `archive.sh` |
+
+Rules that carry over: sizes are disk usage, each directory and hard-linked file is counted once, truncate by `Character`, no third-party names, no private APIs, no network. Before changing the scanner or layout, run `swift/scripts/bench.sh ~` and compare with the Rust scanner.
+
+```bash
+cd swift
+swift build -c release && swift test         # engine and tests
+./scripts/compare-totals.sh                  # Swift and Rust totals must match
+./scripts/bench.sh --runs 5 ~                # Swift vs Rust timings and memory
+open Alocir.xcodeproj                         # the app
+BUILD_NUMBER=26 ./scripts/archive.sh          # store package, signed, not uploaded
+```
+
 ## CI/CD
 
 `.github/workflows/ci.yml`:
@@ -87,6 +112,8 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
 - **lint** (Linux): `cargo fmt --all --check` and clippy with `-D warnings`.
 - **build**: builds and tests on Linux x86_64, Windows x86_64 and macOS, and builds a universal macOS `.app`. On pushes to `main` with signing secrets set, the app is signed with Developer ID and notarized; otherwise it is ad-hoc signed.
 - **release**: on pushes to `main`, creates a GitHub Release tagged with the version from `crates/alocir/Cargo.toml`, with zip artifacts.
+- **swift** (`xcode-27` runner): `swift/scripts/ci.sh` builds and tests the Swift engine, checks its totals against the Rust scanner, builds the app with the macOS 27 SDK and runs the private-API check; then `screenshots.sh` captures every screen with demo data as the `screenshots` artifact.
+- **benchmark** (pull requests): Swift vs Rust scanner medians on the same runner, posted as a PR comment. Shared runners are noisy; real numbers come from a Mac.
 - **app-store**: manual runs only (`workflow_dispatch`). Builds the sandboxed store package and uploads it to App Store Connect. Skipped when its secrets are missing.
 
 Secrets: `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY` and `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` for notarized releases; the `MAS_*` secrets listed in `docs/mac-app-store.md` for the store job. Bump the version in `crates/alocir/Cargo.toml` before a release, or the release with that tag is updated in place.
