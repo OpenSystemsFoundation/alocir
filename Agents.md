@@ -114,7 +114,6 @@ BUILD_NUMBER=32 ./scripts/archive.sh          # store package, signed, not uploa
 - **release**: on pushes to `main`, creates a GitHub Release tagged with the version from `crates/alocir/Cargo.toml`, with zip artifacts.
 - **swift** (`xcode-27` runner): `swift/scripts/ci.sh` builds and tests the Swift engine, checks its totals against the Rust scanner, builds the universal app with the macOS 27 SDK (failing without both arm64 and x86_64) and runs the private-API check; then `screenshots.sh` captures every screen with demo data as the `screenshots` artifact.
 - **macos-26** (`macos-26` and `macos-26-intel` runners): runs the engine tests and launches every screen of the app built by the **swift** job, on the oldest supported macOS, on both architectures.
-- **benchmark** (pull requests): Swift vs Rust scanner medians on the same runner, posted as a PR comment. Shared runners are noisy; real numbers come from a Mac.
 - **app-store**: manual runs only (`workflow_dispatch`). Builds the sandboxed store package and uploads it to App Store Connect. Skipped when its secrets are missing.
 
 Secrets: `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY` and `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` for notarized releases; the `MAS_*` secrets listed in `docs/mac-app-store.md` for the store job. Bump the version in `crates/alocir/Cargo.toml` before a release, or the release with that tag is updated in place.
