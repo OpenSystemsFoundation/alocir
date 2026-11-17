@@ -76,24 +76,32 @@ for binary in "${binaries[@]}"; do
         found=1
     done < <(otool -L "$binary" | awk 'NR > 1 {print $1}' | grep '/PrivateFrameworks/' | sort -u || true)
 
-    # Only the sections App Review reads names from: Objective-C selector
-    # names (__objc_methname) and C strings (__cstring, where dlsym names
-    # live). Swift's reflection metadata (__swift5_reflstr) holds property
-    # names such as `_isSearching` that @Observable generates; they are not
-    # selectors.
+    # Selector-shaped names (`_helpCursor`, `_wantsKeyDownForEvent:`) only
+    # count in Objective-C selector names (__objc_methname); private
+    # function names looked up with dlsym (CGS*, SLS*, CPS*, the deny list)
+    # count anywhere in C strings (__cstring) too. Swift metadata holds
+    # names such as `_isSearching` (the storage @Observable generates for
+    # `isSearching`), which are neither.
+    section_strings() {
+        for arch in $(lipo -archs "$binary"); do
+            otool -arch "$arch" -X -v -s __TEXT "$1" "$binary" 2>/dev/null \
+                | sed -E 's/^[0-9a-f]+[[:space:]]+//'
+        done | sort -u
+    }
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
-        report "private function or selector named in the binary: $name"
+        report "private selector named in the binary: $name"
         found=1
-    done < <(for arch in $(lipo -archs "$binary"); do
-            for section in __objc_methname __cstring; do
-                otool -arch "$arch" -X -v -s __TEXT "$section" "$binary" 2>/dev/null \
-                    | sed -E 's/^[0-9a-f]+[[:space:]]+//'
-            done
-        done | sort -u | grep -E \
+    done < <(section_strings __objc_methname | grep -E \
         -e '^_[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*(:([A-Za-z0-9]+:)*)?$' \
-        -e '^(CGS|SLS|CPS)[A-Z][A-Za-z]+$' \
         -e "$DENY_SELECTORS" | awk 'length >= 8' || true)
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        report "private function named in the binary: $name"
+        found=1
+    done < <(section_strings __cstring | grep -E \
+        -e '^(CGS|SLS|CPS)[A-Z][A-Za-z]+$' \
+        -e "$DENY_SELECTORS" || true)
 
     if [[ $found -eq 0 ]]; then
         echo "    none found"

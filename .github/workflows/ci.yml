@@ -192,6 +192,71 @@ jobs:
       - name: Build, test and check the Swift app
         run: ./swift/scripts/ci.sh
 
+  # Swift vs Rust scanner on the same runner: a synthetic tree and two real
+  # ones from the image. Shared runners are noisy, so this reports medians
+  # and is a comparison, not a measure of speed on a real Mac. The table is
+  # posted on the pull request and in the job summary.
+  benchmark:
+    name: Benchmark (Swift vs Rust)
+    if: github.event_name == 'pull_request'
+    runs-on: xcode-27
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: xcode27-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: xcode27-cargo-
+
+      - name: Build the benchmark tree
+        run: ./swift/scripts/make-bench-tree.sh "$RUNNER_TEMP/bench-tree"
+
+      - name: Run the benchmark
+        run: |
+          ./swift/scripts/bench.sh --runs 5 --markdown \
+            "$RUNNER_TEMP/bench-tree" /Applications/Xcode_27.2.app /usr > bench.md
+          cat bench.md
+          cat bench.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Post the results on the pull request
+        if: always() && hashFiles('bench.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          marker='<!-- alocir-benchmark -->'
+          {
+            echo "$marker"
+            echo "### Scanner benchmark: Swift vs Rust (CI runner)"
+            echo
+            echo "Commit ${SHA:0:7}."
+            cat bench.md
+            echo
+            echo "_Hosted runners are shared virtual machines: compare the two columns, not the absolute times. Real numbers come from \`swift/scripts/bench.sh\` on a Mac._"
+          } > comment.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.body | startswith(\"$marker\")) | .id" | head -1)
+          if [[ -n "$id" ]]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@comment.md >/dev/null
+          else
+            gh pr comment "$PR" --body-file comment.md
+          fi
+
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: build
