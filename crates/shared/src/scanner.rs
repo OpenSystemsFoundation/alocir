@@ -175,7 +175,6 @@ impl FileNode {
 
         // Now that everything else is counted, scan what was put off; any
         // directory already seen through another path is left out of it.
-        // Each one is scanned as its own root, so it isn't put off again.
         let deferred = std::mem::take(&mut *progress.deferred.lock().unwrap());
         for dir in deferred {
             let Ok(relative) = dir.strip_prefix(path) else {
@@ -185,7 +184,7 @@ impl FileNode {
                 .components()
                 .map(|c| c.as_os_str().to_string_lossy().to_string())
                 .collect();
-            if let Some(node) = FileNode::scan_entry(&dir, &dir, progress, excluded, ctx) {
+            if let Some(node) = FileNode::scan_entry(&dir, path, progress, excluded, ctx) {
                 root.graft(&components, node);
             }
         }
