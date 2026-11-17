@@ -82,7 +82,7 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
 
 ## Native macOS app (2.0, `swift/`)
 
-From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite for macOS 27 with Liquid Glass. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows and Linux; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
+From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite with Liquid Glass. It runs on macOS 26 and later (Apple Silicon and Intel; 26 is the last macOS for Intel Macs) and is built with the macOS 27 SDK, so anything newer than macOS 26 needs an `if #available` check; the compiler enforces this. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows and Linux; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
 
 | Path | Purpose |
 |------|---------|
@@ -102,7 +102,7 @@ swift build -c release && swift test         # engine and tests
 ./scripts/compare-totals.sh                  # Swift and Rust totals must match
 ./scripts/bench.sh --runs 5 ~                # Swift vs Rust timings and memory
 open Alocir.xcodeproj                         # the app
-BUILD_NUMBER=26 ./scripts/archive.sh          # store package, signed, not uploaded
+BUILD_NUMBER=32 ./scripts/archive.sh          # store package, signed, not uploaded
 ```
 
 ## CI/CD
@@ -112,7 +112,8 @@ BUILD_NUMBER=26 ./scripts/archive.sh          # store package, signed, not uploa
 - **lint** (Linux): `cargo fmt --all --check` and clippy with `-D warnings`.
 - **build**: builds and tests on Linux x86_64, Windows x86_64 and macOS, and builds a universal macOS `.app`. On pushes to `main` with signing secrets set, the app is signed with Developer ID and notarized; otherwise it is ad-hoc signed.
 - **release**: on pushes to `main`, creates a GitHub Release tagged with the version from `crates/alocir/Cargo.toml`, with zip artifacts.
-- **swift** (`xcode-27` runner): `swift/scripts/ci.sh` builds and tests the Swift engine, checks its totals against the Rust scanner, builds the app with the macOS 27 SDK and runs the private-API check; then `screenshots.sh` captures every screen with demo data as the `screenshots` artifact.
+- **swift** (`xcode-27` runner): `swift/scripts/ci.sh` builds and tests the Swift engine, checks its totals against the Rust scanner, builds the universal app with the macOS 27 SDK (failing without both arm64 and x86_64) and runs the private-API check; then `screenshots.sh` captures every screen with demo data as the `screenshots` artifact.
+- **macos-26** (`macos-26` and `macos-26-intel` runners): runs the engine tests and launches every screen of the app built by the **swift** job, on the oldest supported macOS, on both architectures.
 - **benchmark** (pull requests): Swift vs Rust scanner medians on the same runner, posted as a PR comment. Shared runners are noisy; real numbers come from a Mac.
 - **app-store**: manual runs only (`workflow_dispatch`). Builds the sandboxed store package and uploads it to App Store Connect. Skipped when its secrets are missing.
 

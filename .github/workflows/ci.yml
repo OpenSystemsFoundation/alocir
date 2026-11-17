@@ -192,6 +192,15 @@ jobs:
       - name: Build, test and check the Swift app
         run: ./swift/scripts/ci.sh
 
+      # For the macos-26 job: the same universal build, run on the oldest
+      # supported system. ditto keeps the bundle's symlinks and attributes.
+      - name: Upload the built app
+        run: ditto -c -k --keepParent swift/build/Build/Products/Release/Alocir.app "$RUNNER_TEMP/Alocir.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alocir-app-universal
+          path: ${{ runner.temp }}/Alocir.zip
+
       # Each screen with demo data, light and dark, for reviewing the design.
       - name: Screenshots
         continue-on-error: true
@@ -217,6 +226,55 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
+
+  # The app's minimum is macOS 26, but it is built with the macOS 27 SDK. This
+  # runs the build from the swift job on macOS 26, on Apple Silicon and on
+  # Intel: the engine tests (built here with the image's own Xcode), then
+  # every screenshot scene, which fails if the app doesn't launch or draw.
+  macos-26:
+    name: Swift on macOS 26 (${{ matrix.arch }})
+    needs: swift
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+          - runner: macos-26-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+
+      - name: Engine tests
+        working-directory: swift
+        run: swift test
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: alocir-app-universal
+          path: ${{ runner.temp }}
+
+      - name: Launch every screen
+        run: |
+          ditto -x -k "$RUNNER_TEMP/Alocir.zip" "$RUNNER_TEMP/app"
+          app="$RUNNER_TEMP/app/Alocir.app"
+          echo "Running the $(uname -m) slice of: $(lipo -archs "$app/Contents/MacOS/Alocir")"
+          ./swift/scripts/screenshots.sh "$app" "$RUNNER_TEMP/screenshots"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-macos26-${{ matrix.arch }}
           path: ${{ runner.temp }}/screenshots
           if-no-files-found: warn
 

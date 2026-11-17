@@ -37,5 +37,14 @@ xcodebuild -project Alocir.xcodeproj -scheme Alocir -configuration Release \
 echo "::endgroup::"
 
 app=build/Build/Products/Release/Alocir.app
-echo "Architectures: $(lipo -archs "$app/Contents/MacOS/Alocir")"
+archs=$(lipo -archs "$app/Contents/MacOS/Alocir")
+echo "Architectures: $archs"
+# Universal: macOS 26 is the minimum and the last macOS for Intel Macs.
+for arch in arm64 x86_64; do
+    if [[ " $archs " != *" $arch "* ]]; then
+        echo "::error::The app has no $arch slice (found: $archs)" >&2
+        exit 1
+    fi
+done
+echo "Minimum macOS: $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")"
 ../scripts/check-private-apis.sh "$app"

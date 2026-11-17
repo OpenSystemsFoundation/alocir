@@ -95,8 +95,8 @@ Store build (`--app-store`), described in [docs/mac-app-store.md](docs/mac-app-s
 
 #### Native macOS app (2.0)
 
-The Mac App Store version is a native SwiftUI app for macOS 27, in `swift/`.
-It needs Xcode 27.
+The Mac App Store version is a native SwiftUI app in `swift/`. It runs on
+macOS 26 and later, on Apple Silicon and Intel, and is built with Xcode 27.
 
 ```bash
 cd swift

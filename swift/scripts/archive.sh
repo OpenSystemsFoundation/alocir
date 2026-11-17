@@ -4,7 +4,7 @@
 # private-API check on the result. It never uploads: send the package with
 # Transporter or `xcrun altool` yourself once it has been tested.
 #
-# Usage: BUILD_NUMBER=26 swift/scripts/archive.sh
+# Usage: BUILD_NUMBER=32 swift/scripts/archive.sh
 #   BUILD_NUMBER          required; must be higher than any build already in
 #                         App Store Connect
 #   PROVISIONING_PROFILE  optional; defaults to
