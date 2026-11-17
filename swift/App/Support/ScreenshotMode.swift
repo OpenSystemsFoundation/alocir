@@ -70,7 +70,12 @@ enum ScreenshotMode {
             fflush(stdout)
             return
         }
-        window.setContentSize(windowSize)
+        // Whole-screen scenes need the menu bar and the menu in view.
+        var size = windowSize
+        if scene == "context-menu", let visible = window.screen?.visibleFrame.size {
+            size = CGSize(width: min(size.width, visible.width - 80), height: min(size.height, visible.height - 120))
+        }
+        window.setContentSize(size)
         window.center()
         // Launched from a script, the app starts behind the frontmost one;
         // an inactive window draws its controls dimmed.
@@ -136,17 +141,27 @@ enum ScreenshotMode {
         fflush(stdout)
     }
 
-    /// Opens the map's context menu over a tile left of centre.
+    /// Opens the map's context menu over a tile left of centre: asks the
+    /// view under that point for its menu, as a right click would.
     private static func rightClick(in window: NSWindow) {
         guard let content = window.contentView else { return }
         let point = NSPoint(x: content.bounds.width * 0.3, y: content.bounds.height * 0.45)
-        for type in [NSEvent.EventType.mouseMoved, .rightMouseDown] {
-            guard let event = NSEvent.mouseEvent(
-                with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
-                windowNumber: window.windowNumber, context: nil, eventNumber: 0,
-                clickCount: 1, pressure: type == .rightMouseDown ? 1 : 0)
-            else { continue }
-            NSApplication.shared.postEvent(event, atStart: false)
+        let location = content.convert(point, to: nil)
+        guard let event = NSEvent.mouseEvent(
+            with: .rightMouseDown, location: location, modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+        else { return }
+        var view = content.hitTest(content.superview.map { content.convert(point, to: $0) } ?? point)
+        while let candidate = view {
+            if let menu = candidate.menu(for: event) {
+                NSMenu.popUpContextMenu(menu, with: event, for: candidate)
+                return
+            }
+            view = candidate.superview
         }
+        print("ALOCIR_NOTE=no context menu at \(point)")
+        fflush(stdout)
+        window.sendEvent(event)
     }
 }
