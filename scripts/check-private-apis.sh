@@ -23,7 +23,12 @@ set -euo pipefail
 
 # Imported `_`-prefixed symbols that are standard runtime/ABI, not private API.
 # (nm prints C names with one extra leading underscore.)
-ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_)'
+# - swift*: the Swift runtime's ABI (libswiftCore and the overlays), which
+#   every Swift binary imports, e.g. _swiftEmptyArrayStorage and the
+#   _swift_FORCE_LOAD_$_swift<Module> autolink symbols.
+# - objc_empty_cache: libobjc's ABI symbol that every compiled class's
+#   method cache points at.
+ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_|swift|objc_empty_cache$)'
 
 # Undocumented selectors and functions without a telltale underscore.
 DENY_SELECTORS='^(busyButClickableCursor|CGSMainConnectionID|CGSSetWindowBackgroundBlurRadius)$'

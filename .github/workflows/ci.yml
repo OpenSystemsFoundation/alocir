@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, swift-rewrite]
   pull_request:
-    branches: [main]
+    # swift-rewrite is the integration branch for the Swift app; its
+    # workstream pull requests are checked here too.
+    branches: [main, swift-rewrite]
   workflow_dispatch:
 
 env:
@@ -159,6 +161,22 @@ jobs:
         with:
           name: alocir-macos-universal
           path: alocir-macos-universal.zip
+
+  # The native Swift app in swift/ (see docs/swift-rewrite.md). Needs the
+  # macOS 27 SDK, which only the xcode-27 image has (a preview label; check
+  # the actions/runner-images README if it stops being picked up).
+  swift:
+    name: Swift (macOS 27 SDK)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+
+      - name: Build, test and check the Swift app
+        run: ./swift/scripts/ci.sh
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
