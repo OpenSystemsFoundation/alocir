@@ -72,6 +72,9 @@ public struct DiskScanner: Sendable {
     /// Read directories with `readdir` + `fstatat` instead of
     /// `getattrlistbulk` (for tests and comparisons).
     public var useFallbackReader = false
+    /// Open subdirectories relative to their open parent (`openat`) instead
+    /// of by full path. Off only to compare the two in tests.
+    var opensRelativeToParent = true
 
     public init(excluded: Set<String> = []) {
         self.excluded = excluded
@@ -137,6 +140,9 @@ public struct DiskScanner: Sendable {
 /// Sets shared by every thread of one scan. Locked once per directory and
 /// once per hard-linked file.
 final class ScanState: Sendable {
+    /// Parent directories this scan holds open (`DirectoryHandle`). Zero
+    /// again once the scan returns.
+    let openHandles = Atomic<Int>(0)
     private let visitedDirectories = Mutex<Set<FileID>>([])
     private let countedLinks = Mutex<Set<FileID>>([])
     private let deferred = Mutex<[String]>([])
@@ -161,6 +167,130 @@ final class ScanState: Sendable {
             return list
         }
     }
+
+    /// Directory nodes that turned out not to be read as directories, and
+    /// what stands in for each (`nil`: leave it out). Rare, so one lock.
+    private let replaced = Mutex<[ObjectIdentifier: FileNode?]>([:])
+
+    func replace(_ node: FileNode, with replacement: FileNode?) {
+        replaced.withLock { $0[ObjectIdentifier(node)] = .some(replacement) }
+    }
+
+    func takeReplacements() -> [ObjectIdentifier: FileNode?] {
+        replaced.withLock { map in
+            defer { map.removeAll() }
+            return map
+        }
+    }
+}
+
+/// A directory waiting to be scanned. Its node is already in its parent's
+/// `children`; the worker that scans the job fills in the node's children,
+/// and `finish` sums and sorts once every worker is done. Freed as soon as it
+/// has been scanned, so only pending directories cost a job.
+private final class DirectoryJob: @unchecked Sendable {
+    let path: String
+    let node: FileNode
+    /// The open parent directory, to open this one relative to. Released as
+    /// soon as this job has opened its directory.
+    var parent: DirectoryHandle?
+
+    init(path: String, node: FileNode, parent: DirectoryHandle? = nil) {
+        self.path = path
+        self.node = node
+        self.parent = parent
+    }
+}
+
+/// One worker's pending directories. The owner pushes and pops at the back,
+/// so it goes depth first through folders it has just looked up; an idle
+/// worker steals from the front, the oldest and usually largest job, so
+/// workers spread out over different parts of the tree (as rayon does).
+private final class WorkerStack: Sendable {
+    private struct Items: Sendable {
+        var jobs: [DirectoryJob] = []
+        /// Index of the oldest job not yet stolen.
+        var head = 0
+    }
+
+    private let items = Mutex(Items())
+
+    func push(_ jobs: [DirectoryJob]) {
+        items.withLock { $0.jobs.append(contentsOf: jobs) }
+    }
+
+    func popNewest() -> DirectoryJob? {
+        items.withLock { items in
+            guard items.jobs.count > items.head else { return nil }
+            let job = items.jobs.removeLast()
+            if items.jobs.count == items.head {
+                items.jobs.removeAll(keepingCapacity: true)
+                items.head = 0
+            }
+            return job
+        }
+    }
+
+    func stealOldest() -> DirectoryJob? {
+        items.withLock { items in
+            guard items.jobs.count > items.head else { return nil }
+            let job = items.jobs[items.head]
+            items.head += 1
+            // Drop stolen slots once they are half the array.
+            if items.head > 64 && items.head * 2 > items.jobs.count {
+                items.jobs.removeFirst(items.head)
+                items.head = 0
+            }
+            return job
+        }
+    }
+}
+
+/// The directories of one scan, split over its workers.
+private final class JobPool: Sendable {
+    private let stacks: [WorkerStack]
+    /// Jobs pushed and not yet finished. Zero means the scan is done.
+    private let pending = Atomic<Int>(0)
+
+    init(workers: Int) {
+        stacks = (0..<workers).map { _ in WorkerStack() }
+    }
+
+    var workers: Int { stacks.count }
+
+    func push(_ jobs: [DirectoryJob], worker: Int) {
+        guard !jobs.isEmpty else { return }
+        pending.wrappingAdd(jobs.count, ordering: .relaxed)
+        stacks[worker].push(jobs)
+    }
+
+    /// Marks a job finished. Call after pushing its subdirectories, so
+    /// `pending` never reaches zero while work remains.
+    func finish() {
+        pending.wrappingSubtract(1, ordering: .releasing)
+    }
+
+    /// The next job for `worker`, or `nil` once every job has finished.
+    func next(worker: Int) -> DirectoryJob? {
+        var idle = 0
+        while true {
+            if let job = stacks[worker].popNewest() { return job }
+            for offset in 1..<max(stacks.count, 1) {
+                if let job = stacks[(worker + offset) % stacks.count].stealOldest() { return job }
+            }
+            if pending.load(ordering: .acquiring) == 0 { return nil }
+            // Nothing to steal yet: another worker is reading a directory
+            // whose subdirectories will be pushed shortly.
+            idle += 1
+            if idle < 32 {
+                continue
+            } else if idle < 128 {
+                sched_yield()
+            } else {
+                usleep(100)
+            }
+        }
+    }
 }
 
 /// One scan's context, shared by its worker threads.
@@ -170,6 +300,15 @@ private struct Run: Sendable {
     let state: ScanState
     let root: String
 
+    /// Worker threads per scan: one per active CPU core, or `ALOCIR_SCAN_THREADS`
+    /// (for benchmarking).
+    static let workerCount: Int = {
+        if let value = getenv("ALOCIR_SCAN_THREADS"), let count = Int(String(cString: value)), count > 0 {
+            return count
+        }
+        return max(1, sysconf(_SC_NPROCESSORS_ONLN))
+    }()
+
     /// Size of a regular file, or 0 if it is another link to a file this scan
     /// already counted.
     func usage(size: UInt64, linkCount: UInt32, id: FileID) -> UInt64 {
@@ -177,34 +316,69 @@ private struct Run: Sendable {
         return size
     }
 
-    /// Scans one entry by path. `nil` for a directory that is skipped here:
-    /// already visited through another path, or put off until later.
+    /// Scans `path` and everything below it. `nil` for a directory that is
+    /// skipped here: already visited through another path, or put off until
+    /// later.
+    ///
+    /// A fixed set of workers, one per core, each with its own stack of
+    /// directories and stealing from the others when idle (see `JobPool`).
+    /// Nested `concurrentPerform` calls, which this replaced, narrow to one
+    /// thread below the first level and left most cores idle.
     func scanEntry(path: String, name: String, allowDefer: Bool) -> FileNode? {
-        if progress.isCancelled {
-            return FileNode(name: name, isDirectory: true)
+        let top = DirectoryJob(path: path, node: FileNode(name: name, isDirectory: true))
+        let pool = JobPool(workers: Self.workerCount)
+        pool.push([top], worker: 0)
+        let run = self
+        DispatchQueue.concurrentPerform(iterations: pool.workers) { worker in
+            while let job = pool.next(worker: worker) {
+                run.scan(job, allowDefer: allowDefer, pool: pool, worker: worker)
+                pool.finish()
+            }
         }
-        if scanner.excluded.contains(path) {
-            return FileNode(name: name, isDirectory: true)
-        }
-        if allowDefer && path != root && path == scanner.deferredVolume {
-            state.addDeferred(path)
-            return nil
-        }
+        return Self.finish(top.node, replacements: state.takeReplacements())
+    }
 
-        guard let reader = DirectoryReader(path: path) else {
-            return scanNonDirectory(path: path, name: name)
+    /// Reads one directory into its node: files as they are, subdirectories
+    /// as empty nodes, each pushed as a new job.
+    private func scan(_ job: DirectoryJob, allowDefer: Bool, pool: JobPool, worker: Int) {
+        let name = job.node.name
+        // Cancelled or excluded: the node stays an empty directory.
+        if progress.isCancelled || scanner.excluded.contains(job.path) {
+            return
         }
-        guard state.visit(reader.id) else { return nil }
-        progress.offerPath(path)
+        if allowDefer && job.path != root && job.path == scanner.deferredVolume {
+            state.addDeferred(job.path)
+            state.replace(job.node, with: nil)
+            return
+        }
+        let opened = job.parent.flatMap { DirectoryReader(in: $0, name: name) }
+            ?? DirectoryReader(path: job.path)
+        job.parent = nil
+        guard let reader = opened else {
+            state.replace(job.node, with: scanNonDirectory(path: job.path, name: name))
+            return
+        }
+        guard state.visit(reader.id) else {
+            state.replace(job.node, with: nil)
+            return
+        }
+        progress.offerPath(job.path)
 
         var children: [FileNode] = []
-        var subdirectories: [String] = []
+        var subdirectories: [DirectoryJob] = []
         var fileCount: UInt64 = 0
         var fileBytes: UInt64 = 0
+        let path = job.path
+        // Kept open while subdirectory jobs still need it; released at the end
+        // of this function if there are none.
+        let handle = scanner.opensRelativeToParent ? reader.handle(for: state) : nil
         reader.forEachEntry(forceFallback: scanner.useFallbackReader) { entry in
             switch entry.type {
             case .directory:
-                subdirectories.append(entry.name)
+                let node = FileNode(name: entry.name, isDirectory: true)
+                children.append(node)
+                subdirectories.append(DirectoryJob(
+                    path: DiskScanner.join(path, entry.name), node: node, parent: handle))
             case .symlink:
                 break
             case .regular:
@@ -221,36 +395,42 @@ private struct Run: Sendable {
         }
         // The directory itself counts as one item, as in the Rust app.
         progress.add(items: fileCount + 1, bytes: fileBytes)
+        // Written before the subdirectory jobs are pushed; each of those
+        // writes only its own node.
+        job.node.children = children
+        pool.push(subdirectories, worker: worker)
+    }
 
-        if subdirectories.count == 1 {
-            if let node = scanEntry(
-                path: DiskScanner.join(path, subdirectories[0]), name: subdirectories[0],
-                allowDefer: allowDefer)
-            {
-                children.append(node)
-            }
-        } else if !subdirectories.isEmpty {
-            let results = UnsafeMutableBufferPointer<FileNode?>.allocate(capacity: subdirectories.count)
-            results.initialize(repeating: nil)
-            defer {
-                _ = results.deinitialize()
-                results.deallocate()
-            }
-            // Each iteration writes only its own slot.
-            nonisolated(unsafe) let slots = results
-            let names = subdirectories
-            let run = self
-            DispatchQueue.concurrentPerform(iterations: names.count) { index in
-                slots[index] = run.scanEntry(
-                    path: DiskScanner.join(path, names[index]), name: names[index],
-                    allowDefer: allowDefer)
-            }
-            children.reserveCapacity(children.count + names.count)
-            for case let node? in results {
-                children.append(node)
+    /// Completes the tree once every worker is done: applies replacements,
+    /// sets parents, sums sizes and sorts children, largest first. `nil` if
+    /// the top directory itself was left out.
+    private static func finish(_ top: FileNode, replacements: [ObjectIdentifier: FileNode?]) -> FileNode? {
+        if let replacement = replacements[ObjectIdentifier(top)] {
+            return replacement
+        }
+        finishDirectory(top, replacements)
+        return top
+    }
+
+    private static func finishDirectory(_ node: FileNode, _ replacements: [ObjectIdentifier: FileNode?]) {
+        if !replacements.isEmpty
+            && node.children.contains(where: { $0.isDirectory && replacements[ObjectIdentifier($0)] != nil })
+        {
+            node.children = node.children.compactMap { child in
+                if let replacement = replacements[ObjectIdentifier(child)] { return replacement }
+                return child
             }
         }
-        return FileNode(name: name, isDirectory: true, children: children)
+        var total: UInt64 = 0
+        for child in node.children {
+            if child.isDirectory {
+                finishDirectory(child, replacements)
+            }
+            child.parent = node
+            total += child.size
+        }
+        node.children.sort { $0.size > $1.size }
+        node.size = total
     }
 
     /// What is at `path` when it cannot be opened as a directory: a file, a

@@ -1,4 +1,5 @@
 import Darwin
+import Synchronization
 
 /// `(device, inode)`: identifies a file or directory across paths.
 struct FileID: Hashable, Sendable {
@@ -43,7 +44,16 @@ struct DirectoryReader: ~Copyable {
     /// Opens `path` as a directory without following a symlink. `nil` (with
     /// `errno` set) if it cannot be opened.
     init?(path: String) {
-        let fd = Darwin.open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+        self.init(opened: Darwin.open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC))
+    }
+
+    /// Opens `name` inside the open directory `parent`, which skips looking
+    /// up every component of the full path again. Same rules as `init(path:)`.
+    init?(in parent: DirectoryHandle, name: String) {
+        self.init(opened: openat(parent.fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC))
+    }
+
+    private init?(opened fd: Int32) {
         guard fd >= 0 else { return nil }
         var st = stat()
         guard fstat(fd, &st) == 0 else {
@@ -58,6 +68,12 @@ struct DirectoryReader: ~Copyable {
 
     deinit {
         if fd >= 0 { Darwin.close(fd) }
+    }
+
+    /// A second descriptor for this directory, kept open so its
+    /// subdirectories can be opened relative to it. `nil` if it can't be had.
+    func handle(for scan: ScanState) -> DirectoryHandle? {
+        DirectoryHandle(duplicating: fd, for: scan)
     }
 
     /// Calls `body` for every entry except `.` and `..`, then closes the
@@ -222,6 +238,43 @@ struct DirectoryReader: ~Copyable {
                 allocatedSize: UInt64(clamping: st.st_blocks) &* 512,
                 linkCount: UInt32(st.st_nlink), id: id))
         }
+    }
+}
+
+/// An open directory that subdirectory jobs open themselves relative to.
+/// Closed when the last job holding it lets go.
+///
+/// The number open at once is capped (`limit`): apps start with a soft limit
+/// of 256 descriptors, and the rest of the app needs some. Past the cap,
+/// subdirectories are opened by full path, which is slower but needs none.
+final class DirectoryHandle: Sendable {
+    let fd: Int32
+    /// The scan this handle belongs to, which counts its open handles.
+    private let scan: ScanState
+
+    /// Handles open across every scan in the process.
+    private static let open = Atomic<Int>(0)
+    static let limit = 128
+
+    init?(duplicating source: Int32, for scan: ScanState) {
+        guard Self.open.wrappingAdd(1, ordering: .relaxed).newValue <= Self.limit else {
+            Self.open.wrappingSubtract(1, ordering: .relaxed)
+            return nil
+        }
+        let fd = fcntl(source, F_DUPFD_CLOEXEC, 0)
+        guard fd >= 0 else {
+            Self.open.wrappingSubtract(1, ordering: .relaxed)
+            return nil
+        }
+        self.fd = fd
+        self.scan = scan
+        scan.openHandles.wrappingAdd(1, ordering: .relaxed)
+    }
+
+    deinit {
+        Darwin.close(fd)
+        scan.openHandles.wrappingSubtract(1, ordering: .relaxed)
+        Self.open.wrappingSubtract(1, ordering: .relaxed)
     }
 }
 

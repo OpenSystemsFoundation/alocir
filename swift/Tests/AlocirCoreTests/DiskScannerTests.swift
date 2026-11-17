@@ -35,6 +35,36 @@ import Testing
         #expect(node.child("a")!.child("b")!.child("two.bin")!.path == tree.path("a/b/two.bin"))
     }
 
+    /// Subdirectories are opened relative to their open parent; the result
+    /// must be the same as opening every one by full path, and the scan must
+    /// close every parent it held open.
+    @Test func relativeOpensMatchFullPathsAndCloseEveryHandle() {
+        let tree = TempTree()
+        // Wide and deep, so parents stay open while many children wait.
+        for i in 0..<40 {
+            tree.dir("w/\(i)/a/b/c")
+            tree.dir("w/\(i)/empty")
+            tree.file("w/\(i)/a/b/c/f.bin", bytes: 4096 * (i + 1))
+        }
+        tree.file("w/top.bin", bytes: 10)
+
+        let relativeState = ScanState()
+        let relativeProgress = ScanProgress()
+        let relative = DiskScanner().scanEntryForTesting(
+            path: tree.root, state: relativeState, progress: relativeProgress)
+        var fullPaths = DiskScanner()
+        fullPaths.opensRelativeToParent = false
+        let fullProgress = ScanProgress()
+        let full = fullPaths.scanEntryForTesting(path: tree.root, state: ScanState(), progress: fullProgress)
+
+        #expect(relative?.size == full?.size)
+        #expect(relative?.nodeCount == full?.nodeCount)
+        #expect(relativeProgress.itemsScanned == fullProgress.itemsScanned)
+        #expect(relative?.child("w")?.child("39")?.child("a")?.child("b")?.child("c")?.child("f.bin")?.size
+            == tree.usage("w/39/a/b/c/f.bin"))
+        #expect(relativeState.openHandles.load(ordering: .relaxed) == 0)
+    }
+
     @Test func countsDiskUsageAndHardLinksOnce() {
         let tree = TempTree()
         tree.dir("x")
