@@ -42,7 +42,7 @@ struct WindowRoot: View {
         RootView(session: session)
             .frame(minWidth: 760, minHeight: 520)
             .preferredColorScheme(settings.appearance.colorScheme)
-            .focusedSceneValue(\.session, session)
+            .focusedSceneValue(\FocusedValues.session, session)
             .onAppear { claimPendingFolder() }
             .onChange(of: requests.pending) { claimPendingFolder() }
             .task {

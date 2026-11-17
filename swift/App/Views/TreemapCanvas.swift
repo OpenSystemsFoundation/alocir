@@ -117,7 +117,7 @@ struct TreemapCanvas: View, Equatable {
         let size = Formatting.size(node.size)
         let textColor: Color =
             header || node.isDirectory
-            ? (isDark ? .white : .black).opacity(dimmed ? 0.35 : 0.9)
+            ? (isDark ? Color.white : Color.black).opacity(dimmed ? 0.35 : 0.9)
             : palette.labelColor(for: node.kind).opacity(dimmed ? 0.35 : 1)
 
         context.drawLayer { layer in

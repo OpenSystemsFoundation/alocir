@@ -1,4 +1,5 @@
 import AlocirCore
+import QuickLook
 import SwiftUI
 
 /// The treemap screen: the map fills the window edge to edge and runs under
@@ -32,7 +33,7 @@ struct MapView: View {
                 RenameSheet(session: session, node: node)
             }
             .onChange(of: tree.version) { session.search.treeDidChange(tree) }
-            .focusedSceneValue(\.focusSearch, FocusSearchAction { searchFocused = true })
+            .focusedSceneValue(\FocusedValues.focusSearch, FocusSearchAction { searchFocused = true })
     }
 
     @ToolbarContentBuilder
