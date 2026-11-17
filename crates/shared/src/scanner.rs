@@ -86,8 +86,9 @@ fn dir_id(meta: &fs::Metadata) -> Option<(u64, u64)> {
 /// document revisions, ...) stays under it.
 const MACOS_DATA_VOLUME: &str = "/System/Volumes/Data";
 
-fn is_deferred_volume(path: &Path) -> bool {
-    cfg!(target_os = "macos") && path == Path::new(MACOS_DATA_VOLUME)
+/// The directory a scan puts off until the end, on this platform.
+fn deferred_volume() -> Option<&'static Path> {
+    cfg!(target_os = "macos").then(|| Path::new(MACOS_DATA_VOLUME))
 }
 
 /// Minimum time between progress-path updates (and the repaints they request).
@@ -165,8 +166,19 @@ impl FileNode {
         excluded: &Arc<HashSet<PathBuf>>,
         ctx: &eframe::egui::Context,
     ) -> FileNode {
-        let mut root =
-            FileNode::scan_entry(path, path, progress, excluded, ctx).unwrap_or_else(|| FileNode {
+        FileNode::scan_deferring(path, progress, excluded, ctx, deferred_volume())
+    }
+
+    /// `scan`, putting `defer` off until the end when the scan contains it.
+    fn scan_deferring(
+        path: &Path,
+        progress: &Arc<ScanProgress>,
+        excluded: &Arc<HashSet<PathBuf>>,
+        ctx: &eframe::egui::Context,
+        defer: Option<&Path>,
+    ) -> FileNode {
+        let mut root = FileNode::scan_entry(path, path, progress, excluded, ctx, defer)
+            .unwrap_or_else(|| FileNode {
                 name: path.to_string_lossy().to_string(),
                 size: 0,
                 children: Vec::new(),
@@ -175,6 +187,8 @@ impl FileNode {
 
         // Now that everything else is counted, scan what was put off; any
         // directory already seen through another path is left out of it.
+        // Nothing is deferred in this pass, or the deferred directory would
+        // just be put off again and never scanned.
         let deferred = std::mem::take(&mut *progress.deferred.lock().unwrap());
         for dir in deferred {
             let Ok(relative) = dir.strip_prefix(path) else {
@@ -184,7 +198,7 @@ impl FileNode {
                 .components()
                 .map(|c| c.as_os_str().to_string_lossy().to_string())
                 .collect();
-            if let Some(node) = FileNode::scan_entry(&dir, path, progress, excluded, ctx) {
+            if let Some(node) = FileNode::scan_entry(&dir, path, progress, excluded, ctx, None) {
                 root.graft(&components, node);
             }
         }
@@ -224,13 +238,15 @@ impl FileNode {
     }
 
     /// Scan one entry. Returns `None` for a directory that is skipped here:
-    /// already visited through another path, or put off until later.
+    /// already visited through another path, or put off until later (`defer`,
+    /// unless it is the scan root).
     fn scan_entry(
         path: &Path,
         root: &Path,
         progress: &Arc<ScanProgress>,
         excluded: &Arc<HashSet<PathBuf>>,
         ctx: &eframe::egui::Context,
+        defer: Option<&Path>,
     ) -> Option<FileNode> {
         let name = path
             .file_name()
@@ -284,7 +300,7 @@ impl FileNode {
 
         // Put the macOS data volume off until the end (see MACOS_DATA_VOLUME),
         // unless it is what the user asked to scan.
-        if path != root && is_deferred_volume(path) {
+        if path != root && defer == Some(path) {
             progress.deferred.lock().unwrap().push(path.to_path_buf());
             return None;
         }
@@ -372,7 +388,7 @@ impl FileNode {
         children.par_extend(
             subdirs
                 .par_iter()
-                .filter_map(|dir| FileNode::scan_entry(dir, root, progress, excluded, ctx)),
+                .filter_map(|dir| FileNode::scan_entry(dir, root, progress, excluded, ctx, defer)),
         );
 
         let total_size: u64 = children.iter().map(|c| c.size).sum();
@@ -595,8 +611,14 @@ mod tests {
         let excluded = Arc::new(HashSet::new());
         let ctx = eframe::egui::Context::default();
         let first = FileNode::scan(&root, &progress, &excluded, &ctx);
-        let again =
-            FileNode::scan_entry(&root.join("data/users"), &root, &progress, &excluded, &ctx);
+        let again = FileNode::scan_entry(
+            &root.join("data/users"),
+            &root,
+            &progress,
+            &excluded,
+            &ctx,
+            None,
+        );
         let _ = fs::remove_dir_all(&root);
 
         assert!(first.size > 0);
@@ -645,10 +667,54 @@ mod tests {
     #[test]
     fn data_volume_is_deferred_only_on_macos() {
         assert_eq!(
-            is_deferred_volume(Path::new("/System/Volumes/Data")),
-            cfg!(target_os = "macos")
+            deferred_volume(),
+            cfg!(target_os = "macos").then(|| Path::new("/System/Volumes/Data"))
         );
-        assert!(!is_deferred_volume(Path::new("/System/Volumes/Data/Users")));
+    }
+
+    #[test]
+    fn deferred_directory_is_scanned_at_the_end() {
+        // Stands in for /System/Volumes/Data, which tests can't create: it is
+        // put off, then scanned and grafted back in. It used to be put off a
+        // second time and left out.
+        let root = std::env::temp_dir().join(format!("alocir-defer-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("System/Volumes/Data/.Spotlight-V100")).unwrap();
+        fs::create_dir_all(root.join("Users")).unwrap();
+        fs::write(root.join("Users/u.bin"), vec![1u8; 20_000]).unwrap();
+        fs::write(
+            root.join("System/Volumes/Data/.Spotlight-V100/index"),
+            vec![1u8; 50_000],
+        )
+        .unwrap();
+        let usage = |p: &str| disk_usage(&fs::metadata(root.join(p)).unwrap());
+        let (u, index) = (
+            usage("Users/u.bin"),
+            usage("System/Volumes/Data/.Spotlight-V100/index"),
+        );
+
+        let progress = Arc::new(ScanProgress::new());
+        let excluded = Arc::new(HashSet::new());
+        let ctx = eframe::egui::Context::default();
+        let data = root.join("System/Volumes/Data");
+        let node = FileNode::scan_deferring(&root, &progress, &excluded, &ctx, Some(&data));
+        let scanned_whole =
+            FileNode::scan_deferring(&root, &Arc::new(ScanProgress::new()), &excluded, &ctx, None);
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(node.size, u + index);
+        assert_eq!(node.size, scanned_whole.size);
+        let system = node.children.iter().find(|c| c.name == "System").unwrap();
+        let volumes = system
+            .children
+            .iter()
+            .find(|c| c.name == "Volumes")
+            .unwrap();
+        assert_eq!(volumes.children.len(), 1);
+        assert_eq!(volumes.children[0].name, "Data");
+        assert_eq!(volumes.children[0].size, index);
+        // root, Users, System, Volumes, Data, .Spotlight-V100 + 2 files
+        assert_eq!(progress.items_scanned.load(Ordering::Relaxed), 8);
     }
 
     #[test]
