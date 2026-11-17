@@ -59,6 +59,27 @@ public enum Formatting {
         return String(s.prefix(maxCharacters - 1)) + "…"
     }
 
+    /// At most `maxCharacters` characters, the middle replaced by "…" when
+    /// longer, so both ends stay recognisable. With `keepingExtension`, a
+    /// short extension (".mov", ".tar.gz" counts its last part) is kept
+    /// whole when there is room for it plus a few characters.
+    public static func truncateMiddle(_ s: String, maxCharacters: Int, keepingExtension: Bool = false) -> String {
+        let count = s.count
+        guard count > maxCharacters else { return s }
+        guard maxCharacters > 2 else { return truncateEnd(s, maxCharacters: maxCharacters) }
+        let budget = maxCharacters - 1
+        var tail = budget / 2
+        if keepingExtension, let dot = s.lastIndex(of: "."), dot != s.startIndex {
+            let ext = s.distance(from: dot, to: s.endIndex)
+            // Room for the extension and at least two characters before "…".
+            if ext <= 8, ext + 2 <= budget {
+                tail = max(tail, min(ext + 2, budget - 2))
+            }
+        }
+        let head = budget - tail
+        return String(s.prefix(head)) + "…" + String(s.suffix(tail))
+    }
+
     /// At most `maxCharacters` characters, the start replaced by "…" when
     /// longer (for paths, where the end matters most).
     public static func truncateStart(_ s: String, maxCharacters: Int) -> String {

@@ -47,7 +47,25 @@ import Testing
         for max in 0..<40 {
             #expect(Formatting.truncateEnd(name, maxCharacters: max).count <= Swift.max(max, 1))
             #expect(Formatting.truncateStart(name, maxCharacters: max).count <= Swift.max(max, 1))
+            #expect(Formatting.truncateMiddle(name, maxCharacters: max).count <= Swift.max(max, 1))
+            #expect(Formatting.truncateMiddle(name, maxCharacters: max, keepingExtension: true).count <= Swift.max(max, 1))
         }
+    }
+
+    @Test func middleTruncationKeepsBothEnds() {
+        #expect(Formatting.truncateMiddle("short.mov", maxCharacters: 20, keepingExtension: true) == "short.mov")
+        #expect(Formatting.truncateMiddle("abcdefghijkl", maxCharacters: 7) == "abc…jkl")
+        // The extension survives, with a couple of characters before it.
+        #expect(Formatting.truncateMiddle("Device-7021.dmg", maxCharacters: 11, keepingExtension: true) == "Devi…21.dmg")
+        #expect(Formatting.truncateMiddle("Concert recording.mkv", maxCharacters: 12, keepingExtension: true)
+            == "Conce…ng.mkv")
+        // Too tight for the extension: plain middle truncation.
+        #expect(Formatting.truncateMiddle("a-long-name.extension", maxCharacters: 7, keepingExtension: true)
+            == "a-l…ion")
+        // A leading dot is a hidden file's name, not an extension.
+        #expect(Formatting.truncateMiddle(".bash_history_long", maxCharacters: 9, keepingExtension: true)
+            == ".bas…long")
+        #expect(Formatting.truncateMiddle("🇳🇱🇳🇱🇳🇱🇳🇱", maxCharacters: 3) == "🇳🇱…🇳🇱")
     }
 }
 

@@ -52,5 +52,11 @@ if timeLayout {
     }
     let ms = Double(best.components.attoseconds) / 1e15 + Double(best.components.seconds) * 1000
     print("layout 1600x1000: \(tiles) tiles, \((ms * 100).rounded() / 100) ms")
+    // Folder tints: the dominant kind of every folder the map can nest.
+    let kindsStart = clock.now
+    let kinds = FolderKinds.dominantKinds(below: node, levels: 8)
+    let kindsTime = clock.now - kindsStart
+    let kindsMs = Double(kindsTime.components.attoseconds) / 1e15 + Double(kindsTime.components.seconds) * 1000
+    print("folder kinds: \(kinds.count) folders, \((kindsMs * 100).rounded() / 100) ms")
 }
 withExtendedLifetime(node) {}
