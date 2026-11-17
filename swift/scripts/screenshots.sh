@@ -48,6 +48,16 @@ for scene in $scenes; do
     else
         echo "::warning::$scene did not report a window within ${timeout}s: ${line:-no output}"
         sed 's/^/    /' "$log" | tail -20
+        # What was on screen, and where the app's main thread was.
+        screencapture -x "$out/$scene-timeout.png" 2>/dev/null
+        pid=$(pgrep -n -f "$binary")
+        if [ -n "$pid" ]; then
+            echo "    main thread of $pid:"
+            sample "$pid" 2 -file "$out/$scene-sample.txt" >/dev/null 2>&1
+            grep -m1 -A40 'Thread_.*DispatchQueue_1\|Thread_.*main' "$out/$scene-sample.txt" | sed 's/^/    /' | cut -c1-160
+        else
+            echo "    the app is no longer running"
+        fi
         failed=1
     fi
     grep '^ALOCIR_NOTE' "$log" | sed "s/^/    $scene: /"
