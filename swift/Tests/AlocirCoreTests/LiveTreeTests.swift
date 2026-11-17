@@ -6,7 +6,7 @@ import Testing
 
 @MainActor
 @Suite struct LiveTreeTests {
-    private func liveTree(_ tree: TempTree, scanner: Scanner = Scanner()) -> LiveTree {
+    private func liveTree(_ tree: TempTree, scanner: DiskScanner = DiskScanner()) -> LiveTree {
         let root = scanner.scanSynchronously(path: tree.root)
         return LiveTree(root: root, scanPath: tree.root, scanner: scanner)
     }
@@ -251,7 +251,7 @@ import Testing
         let tree = TempTree()
         let viaSymlink = tree.root.replacingOccurrences(of: "/private/var/", with: "/var/")
         guard viaSymlink != tree.root else { return }
-        let root = Scanner().scanSynchronously(path: viaSymlink)
+        let root = DiskScanner().scanSynchronously(path: viaSymlink)
         let live = LiveTree(root: root, scanPath: viaSymlink)
         #expect(live.canonicalPath == tree.root)
         write(tree, "f.bin", bytes: 7000)
@@ -264,7 +264,7 @@ import Testing
     @Test func excludedDirectoriesAreLeftAlone() {
         let tree = TempTree()
         tree.dir("skip")
-        let scanner = Scanner(excluded: [tree.path("skip")])
+        let scanner = DiskScanner(excluded: [tree.path("skip")])
         let live = liveTree(tree, scanner: scanner)
         write(tree, "skip/f", bytes: 5000)
         live.reconcile(tree.path("skip/f"))

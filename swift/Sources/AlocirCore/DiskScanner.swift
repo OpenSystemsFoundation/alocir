@@ -57,7 +57,7 @@ public final class ScanProgress: Sendable {
 /// - `/System/Volumes/Data` is scanned last when the scan contains it, then
 ///   grafted in, so data is counted under the familiar paths.
 /// - Unreadable directories become empty directories.
-public struct Scanner: Sendable {
+public struct DiskScanner: Sendable {
     /// Directories to leave empty (full paths).
     public var excluded: Set<String>
     /// Scanned last and grafted in; see the type's documentation.
@@ -158,7 +158,7 @@ final class ScanState: Sendable {
 
 /// One scan's context, shared by its worker threads.
 private struct Run: Sendable {
-    let scanner: Scanner
+    let scanner: DiskScanner
     let progress: ScanProgress
     let state: ScanState
     let root: String
@@ -217,7 +217,7 @@ private struct Run: Sendable {
 
         if subdirectories.count == 1 {
             if let node = scanEntry(
-                path: Scanner.join(path, subdirectories[0]), name: subdirectories[0],
+                path: DiskScanner.join(path, subdirectories[0]), name: subdirectories[0],
                 allowDefer: allowDefer)
             {
                 children.append(node)
@@ -235,7 +235,7 @@ private struct Run: Sendable {
             let run = self
             DispatchQueue.concurrentPerform(iterations: names.count) { index in
                 slots[index] = run.scanEntry(
-                    path: Scanner.join(path, names[index]), name: names[index],
+                    path: DiskScanner.join(path, names[index]), name: names[index],
                     allowDefer: allowDefer)
             }
             children.reserveCapacity(children.count + names.count)
@@ -271,7 +271,7 @@ private struct Run: Sendable {
     }
 }
 
-extension Scanner {
+extension DiskScanner {
     /// Scans one directory with existing shared state (tests only).
     func scanEntryForTesting(path: String, state: ScanState, progress: ScanProgress) -> FileNode? {
         Run(scanner: self, progress: progress, state: state, root: path)

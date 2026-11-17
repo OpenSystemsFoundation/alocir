@@ -1,7 +1,7 @@
 import Testing
 @testable import AlocirCore
 
-@Suite struct ScannerTests {
+@Suite struct DiskScannerTests {
     @Test(arguments: [false, true])
     func sumsNestedSizesAndSkipsSymlinks(fallback: Bool) {
         let tree = TempTree()
@@ -13,7 +13,7 @@ import Testing
         tree.symlink("a", "link")
         let (top, one, two) = (tree.usage("top.txt"), tree.usage("a/one.bin"), tree.usage("a/b/two.bin"))
 
-        var scanner = Scanner()
+        var scanner = DiskScanner()
         scanner.useFallbackReader = fallback
         let progress = ScanProgress()
         let node = scanner.scanSynchronously(path: tree.root, progress: progress)
@@ -44,7 +44,7 @@ import Testing
         tree.sparse("sparse.img", length: 100 * 1024 * 1024)
         let data = tree.usage("x/data.bin")
 
-        let node = Scanner().scanSynchronously(path: tree.root)
+        let node = DiskScanner().scanSynchronously(path: tree.root)
         let sparse = node.child("sparse.img")!.size
 
         #expect(data >= 64 * 1024)
@@ -60,7 +60,7 @@ import Testing
         tree.file("keep.bin", bytes: 5)
         let keep = tree.usage("keep.bin")
 
-        let node = Scanner(excluded: [tree.path("skip")]).scanSynchronously(path: tree.root)
+        let node = DiskScanner(excluded: [tree.path("skip")]).scanSynchronously(path: tree.root)
         #expect(node.size == keep)
         #expect(node.child("skip")?.children.isEmpty == true)
     }
@@ -75,7 +75,7 @@ import Testing
         tree.file("data/users/f.bin", bytes: 8192, fill: 1)
         let state = ScanState()
         let progress = ScanProgress()
-        let scanner = Scanner()
+        let scanner = DiskScanner()
         let first = scanner.scanEntryForTesting(path: tree.root, state: state, progress: progress)
         let again = scanner.scanEntryForTesting(
             path: tree.path("data/users"), state: state, progress: progress)
@@ -88,7 +88,7 @@ import Testing
         tree.dir("System/Volumes/Data/.Spotlight-V100")
         tree.file("System/Volumes/Data/.Spotlight-V100/index", bytes: 50_000, fill: 2)
         tree.file("System/kernel", bytes: 10, fill: 3)
-        var scanner = Scanner()
+        var scanner = DiskScanner()
         scanner.deferredVolume = tree.path("System/Volumes/Data")
         let node = scanner.scanSynchronously(path: tree.root)
 
@@ -105,7 +105,7 @@ import Testing
     @Test func deferredVolumeIsScannedNormallyWhenItIsTheRoot() {
         let tree = TempTree()
         tree.file("f", bytes: 100)
-        var scanner = Scanner()
+        var scanner = DiskScanner()
         scanner.deferredVolume = tree.root
         let node = scanner.scanSynchronously(path: tree.root)
         #expect(node.size == tree.usage("f"))
@@ -136,16 +136,16 @@ import Testing
         let tree = TempTree()
         tree.file("f.bin", bytes: 5000)
         tree.symlink("f.bin", "link")
-        let file = Scanner().scanSynchronously(path: tree.path("f.bin"))
+        let file = DiskScanner().scanSynchronously(path: tree.path("f.bin"))
         #expect(!file.isDirectory)
         #expect(file.size == tree.usage("f.bin"))
-        let link = Scanner().scanSynchronously(path: tree.path("link"))
+        let link = DiskScanner().scanSynchronously(path: tree.path("link"))
         #expect(!link.isDirectory)
         #expect(link.size == 0)
     }
 
     @Test func missingRootIsAnEmptyFile() {
-        let node = Scanner().scanSynchronously(path: "/nonexistent-alocir-\(UInt64.random(in: 0...UInt64.max))")
+        let node = DiskScanner().scanSynchronously(path: "/nonexistent-alocir-\(UInt64.random(in: 0...UInt64.max))")
         #expect(node.size == 0)
         #expect(node.children.isEmpty)
     }
@@ -157,7 +157,7 @@ import Testing
             tree.file("f\(i)", bytes: size, fill: 1)
             tree.file("d/g\(i)", bytes: size, fill: 1)
         }
-        let node = Scanner().scanSynchronously(path: tree.root)
+        let node = DiskScanner().scanSynchronously(path: tree.root)
         func check(_ n: FileNode) {
             let sizes = n.children.map(\.size)
             #expect(sizes == sizes.sorted(by: >))
@@ -176,8 +176,8 @@ import Testing
             }
         }
         let bulkProgress = ScanProgress()
-        let bulk = Scanner().scanSynchronously(path: tree.root, progress: bulkProgress)
-        var fallbackScanner = Scanner()
+        let bulk = DiskScanner().scanSynchronously(path: tree.root, progress: bulkProgress)
+        var fallbackScanner = DiskScanner()
         fallbackScanner.useFallbackReader = true
         let fallbackProgress = ScanProgress()
         let fallback = fallbackScanner.scanSynchronously(path: tree.root, progress: fallbackProgress)
@@ -193,24 +193,24 @@ import Testing
         let progress = ScanProgress()
         progress.cancel()
         await #expect(throws: CancellationError.self) {
-            try await Scanner().scan(path: tree.root, progress: progress)
+            try await DiskScanner().scan(path: tree.root, progress: progress)
         }
     }
 
     @Test func asyncScanReturnsTheTree() async throws {
         let tree = TempTree()
         tree.file("a", bytes: 4096, fill: 1)
-        let node = try await Scanner().scan(path: tree.root)
+        let node = try await DiskScanner().scan(path: tree.root)
         #expect(node.size == tree.usage("a"))
     }
 
     @Test func pathHelpers() {
-        #expect(Scanner.normalize("/Users/me/") == "/Users/me")
-        #expect(Scanner.normalize("/") == "/")
-        #expect(Scanner.join("/", "Users") == "/Users")
-        #expect(Scanner.join("/Users", "me") == "/Users/me")
-        #expect(Scanner.components(of: "/System/Volumes/Data", below: "/") == ["System", "Volumes", "Data"])
-        #expect(Scanner.components(of: "/a/b/c", below: "/a") == ["b", "c"])
-        #expect(Scanner.components(of: "/ab/c", below: "/a") == [])
+        #expect(DiskScanner.normalize("/Users/me/") == "/Users/me")
+        #expect(DiskScanner.normalize("/") == "/")
+        #expect(DiskScanner.join("/", "Users") == "/Users")
+        #expect(DiskScanner.join("/Users", "me") == "/Users/me")
+        #expect(DiskScanner.components(of: "/System/Volumes/Data", below: "/") == ["System", "Volumes", "Data"])
+        #expect(DiskScanner.components(of: "/a/b/c", below: "/a") == ["b", "c"])
+        #expect(DiskScanner.components(of: "/ab/c", below: "/a") == [])
     }
 }

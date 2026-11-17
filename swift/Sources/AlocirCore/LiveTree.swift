@@ -25,7 +25,7 @@ public final class LiveTree {
     /// The selected tile, if any. Cleared when it is deleted.
     public var selection: FileNode?
 
-    @ObservationIgnored let scanner: Scanner
+    @ObservationIgnored let scanner: DiskScanner
     /// Background scans by path: an id (so a superseded scan's result is
     /// ignored) and whether the directory changed while it ran.
     @ObservationIgnored private var pendingScans: [String: (id: UInt64, changed: Bool)] = [:]
@@ -34,8 +34,8 @@ public final class LiveTree {
     @ObservationIgnored private var watcher: FSEventsWatcher?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
 
-    public init(root: FileNode, scanPath: String, scanner: Scanner = Scanner()) {
-        let path = Scanner.normalize(scanPath)
+    public init(root: FileNode, scanPath: String, scanner: DiskScanner = DiskScanner()) {
+        let path = DiskScanner.normalize(scanPath)
         self.root = root
         self.focus = root
         self.scanPath = path
@@ -277,7 +277,7 @@ public final class LiveTree {
     /// `path` rewritten to start with `scanPath` if it is under the
     /// canonical form instead; otherwise unchanged.
     func scanPathForm(_ path: String) -> String {
-        let path = Scanner.normalize(path)
+        let path = DiskScanner.normalize(path)
         if !Self.isWithin(path, scanPath), Self.isWithin(path, canonicalPath) {
             return scanPath + String(path.dropFirst(canonicalPath.count))
         }
@@ -289,12 +289,12 @@ public final class LiveTree {
     func relativeNames(_ path: String) -> [String]? {
         let path = scanPathForm(path)
         guard Self.isWithin(path, scanPath) else { return nil }
-        let names = path == scanPath ? [] : Scanner.components(of: path, below: scanPath)
+        let names = path == scanPath ? [] : DiskScanner.components(of: path, below: scanPath)
         // The scanner keeps excluded directories empty.
         if !scanner.excluded.isEmpty {
             var dir = scanPath
             for name in names.dropLast() {
-                dir = Scanner.join(dir, name)
+                dir = DiskScanner.join(dir, name)
                 if scanner.excluded.contains(dir) { return nil }
             }
         }
@@ -302,7 +302,7 @@ public final class LiveTree {
     }
 
     func path<C: Collection>(for names: C) -> String where C.Element == String {
-        names.reduce(scanPath) { Scanner.join($0, $1) }
+        names.reduce(scanPath) { DiskScanner.join($0, $1) }
     }
 
     /// The directory node at `names` below the root, if the tree has it.

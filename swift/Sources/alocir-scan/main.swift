@@ -27,7 +27,7 @@ guard arguments.count == 1 else {
 }
 let path = arguments[0]
 
-var scanner = Scanner()
+var scanner = DiskScanner()
 scanner.useFallbackReader = fallback
 let progress = ScanProgress()
 let clock = ContinuousClock()

@@ -103,7 +103,7 @@ public final class FSEventsWatcher: Sendable {
         var seen = Set<String>()
         var seenRescans = Set<String>()
         for (path, flag) in zip(paths, flags) {
-            let path = Scanner.normalize(path)
+            let path = DiskScanner.normalize(path)
             if flag & rescanFlags != 0 {
                 if seenRescans.insert(path).inserted { batch.rescans.append(path) }
             } else if flag & historyDone == 0 {
