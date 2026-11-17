@@ -28,7 +28,10 @@ set -euo pipefail
 #   _swift_FORCE_LOAD_$_swift<Module> autolink symbols.
 # - objc_empty_cache: libobjc's ABI symbol that every compiled class's
 #   method cache points at.
-ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_|swift|objc_empty_cache$)'
+# - availability_version_check: what `if #available` compiles to.
+# - os_log_*, os_signpost_*: what the public os_log/Logger and signpost
+#   APIs compile to.
+ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_|swift|objc_empty_cache$|availability_version_check$|os_log_|os_signpost_)'
 
 # Undocumented selectors and functions without a telltale underscore.
 DENY_SELECTORS='^(busyButClickableCursor|CGSMainConnectionID|CGSSetWindowBackgroundBlurRadius)$'
