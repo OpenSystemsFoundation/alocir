@@ -13,14 +13,12 @@ struct SettingsView: View {
                     ForEach(AppSettings.Appearance.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                LabeledContent("Colours") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Palette.allCases) { palette in
-                            PaletteRow(palette: palette, selected: settings.palette == palette) {
-                                settings.palette = palette
-                            }
-                        }
-                    }
+                Toggle(isOn: $settings.classicColors) {
+                    Text("Classic colors")
+                    Text("Candy colors and glossy tiles, from before glass. For light and dark mode.")
+                }
+                LabeledContent("Preview") {
+                    PaletteStrip(palette: settings.palette)
                 }
             }
             Section("Map") {
@@ -50,29 +48,40 @@ struct SettingsView: View {
     }
 }
 
-private struct PaletteRow: View {
+/// The palette's colours for each kind, drawn as the map draws its tiles.
+private struct PaletteStrip: View {
     let palette: Palette
-    let selected: Bool
-    let select: () -> Void
 
     var body: some View {
-        Button(action: select) {
-            HStack(spacing: 10) {
-                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected ? Color.accentColor : .secondary)
-                HStack(spacing: 2) {
-                    ForEach(Palette.legendKinds, id: \.self) { kind in
-                        RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(palette.color(for: kind))
-                            .frame(width: 16, height: 16)
+        HStack(spacing: 2) {
+            ForEach(Palette.legendKinds, id: \.self) { kind in
+                RoundedRectangle(cornerRadius: palette.isClassic ? 4 : 3, style: .continuous)
+                    .fill(palette.color(for: kind))
+                    .overlay {
+                        if palette.isClassic {
+                            ClassicGel(cornerRadius: 4)
+                        }
                     }
-                }
-                Text(palette.name)
-                    .frame(minWidth: 80, alignment: .leading)
+                    .frame(width: 18, height: 18)
             }
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityHidden(true)
+    }
+}
+
+/// The glossy gel highlight of classic tiles, for previews.
+struct ClassicGel: View {
+    let cornerRadius: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(LinearGradient(
+                stops: [
+                    .init(color: .white.opacity(0.55), location: 0),
+                    .init(color: .white.opacity(0.15), location: 0.5),
+                    .init(color: .clear, location: 0.5),
+                    .init(color: .white.opacity(0.18), location: 1),
+                ],
+                startPoint: .top, endPoint: .bottom))
     }
 }

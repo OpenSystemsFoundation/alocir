@@ -24,12 +24,17 @@ final class AppSettings {
         }
     }
 
-    static let shared = AppSettings()
+    /// Screenshot mode sets fixed settings, so it gets throwaway defaults:
+    /// a screenshot must never change the user's own preferences.
+    static let shared = AppSettings(defaults: ScreenshotMode.isActive ? ScreenshotMode.defaults : .standard)
 
     @ObservationIgnored private let defaults: UserDefaults
 
     var appearance: Appearance { didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) } }
-    var palette: Palette { didSet { defaults.set(palette.rawValue, forKey: Keys.palette) } }
+    /// The candy colours and glossy tiles of the desktop before glass, in
+    /// light and dark mode alike.
+    var classicColors: Bool { didSet { defaults.set(classicColors, forKey: Keys.classicColors) } }
+    var palette: Palette { classicColors ? .classic : .modern }
     /// Levels of nested tiles, 1 to 8.
     var nestingDepth: Int { didSet { defaults.set(nestingDepth, forKey: Keys.depth) } }
     var showLabels: Bool { didSet { defaults.set(showLabels, forKey: Keys.labels) } }
@@ -37,7 +42,7 @@ final class AppSettings {
 
     private enum Keys {
         static let appearance = "appearance"
-        static let palette = "palette"
+        static let classicColors = "classicColors"
         static let depth = "nestingDepth"
         static let labels = "showLabels"
         static let inspector = "showInspector"
@@ -46,7 +51,9 @@ final class AppSettings {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         appearance = Appearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
-        palette = Palette(rawValue: defaults.string(forKey: Keys.palette) ?? "") ?? .spectrum
+        classicColors = defaults.bool(forKey: Keys.classicColors)
+        // The six palettes of earlier builds are gone; forget the choice.
+        defaults.removeObject(forKey: "palette")
         let depth = defaults.integer(forKey: Keys.depth)
         nestingDepth = depth == 0 ? 4 : min(max(depth, 1), 8)
         showLabels = defaults.object(forKey: Keys.labels) as? Bool ?? true

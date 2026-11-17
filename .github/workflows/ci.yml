@@ -242,8 +242,12 @@ jobs:
         include:
           - runner: macos-26
             arch: arm64
+            scenes: ""
+          # No GPU on the Intel runners: each scene can take a minute or two to
+          # draw, so two scenes show the app starts and draws there.
           - runner: macos-26-intel
             arch: x86_64
+            scenes: "start map"
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -268,7 +272,7 @@ jobs:
           ditto -x -k "$RUNNER_TEMP/Alocir.zip" "$RUNNER_TEMP/app"
           app="$RUNNER_TEMP/app/Alocir.app"
           echo "Running the $(uname -m) slice of: $(lipo -archs "$app/Contents/MacOS/Alocir")"
-          ./swift/scripts/screenshots.sh "$app" "$RUNNER_TEMP/screenshots"
+          SCENES="${{ matrix.scenes }}" ./swift/scripts/screenshots.sh "$app" "$RUNNER_TEMP/screenshots"
 
       - name: Upload screenshots
         if: always()

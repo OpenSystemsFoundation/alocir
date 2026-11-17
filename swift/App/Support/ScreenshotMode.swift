@@ -17,12 +17,27 @@ enum ScreenshotMode {
 
     static var isActive: Bool { scene != nil }
 
+    /// Settings for screenshot runs, cleared at the start of each, so the
+    /// fixed settings of a scene never reach the user's own preferences.
+    static let defaults: UserDefaults = {
+        let suite = "screenshot-settings"
+        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        defaults.removePersistentDomain(forName: suite)
+        return defaults
+    }()
+
     static let scenes = [
         "start", "start-dark", "scanning", "map", "map-dark", "drilldown",
-        "search", "selection-dark", "context-menu", "settings", "settings-dark",
+        "search", "selection-dark", "context-menu", "tabs", "settings", "settings-dark",
+        // Not captured in CI (a full-screen window gets its own Space): run by
+        // hand to check full screen.
+        "fullscreen", "fullscreen-dark",
+        // The map with classic colors.
+        "classic", "classic-dark",
     ]
 
     static let windowSize = CGSize(width: 1280, height: 800)
+    private static var staged = false
 
     private static var isDark: Bool { scene?.hasSuffix("-dark") ?? false }
     private static var baseScene: String {
@@ -35,7 +50,7 @@ enum ScreenshotMode {
         guard isActive else { return }
         let settings = AppSettings.shared
         settings.appearance = isDark ? .dark : .light
-        settings.palette = .spectrum
+        settings.classicColors = baseScene.hasPrefix("classic")
         settings.nestingDepth = 4
         settings.showLabels = true
         settings.showInspector = true
@@ -45,8 +60,10 @@ enum ScreenshotMode {
 
     /// Sets the window's session up for the scene, waits for it to settle,
     /// and reports the window to capture.
-    static func stage(_ session: Session, openSettings: OpenSettingsAction) async {
-        guard isActive, session.isIdle else { return }
+    static func stage(_ session: Session, openSettings: OpenSettingsAction, openWindow: OpenWindowAction) async {
+        // Only the first window: the "tabs" scene opens a second one.
+        guard isActive, session.isIdle, !staged else { return }
+        staged = true
         print("ALOCIR_STAGE=\(scene ?? "") uptime=\(Int(ProcessInfo.processInfo.systemUptime))")
         fflush(stdout)
         let root = DemoData.homeFolder()
@@ -61,7 +78,7 @@ enum ScreenshotMode {
                 url: URL(filePath: "/"), progress: progress,
                 started: .now.addingTimeInterval(-14), volumeUsedBytes: 402_000_000_000)
             session.showDemo(root, path: DemoData.path, scanning: scan)
-        case "map", "drilldown", "search", "selection", "context-menu":
+        case "map", "drilldown", "search", "selection", "context-menu", "tabs", "fullscreen", "classic":
             session.showDemo(root, path: DemoData.path)
         default:
             break
@@ -102,8 +119,27 @@ enum ScreenshotMode {
             }
         case "settings":
             openSettings()
+        case "tabs", "fullscreen":
+            // A second scan tab (on its start screen), then back to the map,
+            // so the tab bar shows both.
+            TabRequests.shared.openTab(openWindow: openWindow)
+            try? await Task.sleep(for: .seconds(1))
+            window.makeKeyAndOrderFront(nil)
+            if window.tabbedWindows?.count != 2 {
+                print("ALOCIR_NOTE=tabs: \(window.tabbedWindows?.count ?? 1) in the group")
+                fflush(stdout)
+            }
         default:
             break
+        }
+        if scene == "fullscreen" {
+            window.toggleFullScreen(nil)
+            // The full-screen animation, and the toolbar settling.
+            try? await Task.sleep(for: .seconds(2))
+            if !window.styleMask.contains(.fullScreen) {
+                print("ALOCIR_NOTE=fullscreen: the window did not enter full screen")
+                fflush(stdout)
+            }
         }
 
         try? await Task.sleep(for: .seconds(2))
@@ -117,6 +153,8 @@ enum ScreenshotMode {
                 $0.isVisible && $0 !== window && !$0.isSheet && $0.frame.width > 200
             }
             report(settingsWindow ?? window, mode: "window")
+        case "fullscreen":
+            report(window, mode: "screen")
         case "context-menu":
             report(window, mode: "screen")
             try? await Task.sleep(for: .milliseconds(200))

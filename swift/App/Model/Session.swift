@@ -87,6 +87,13 @@ final class Session {
     /// sandbox this is how a folder becomes readable; "Home" and "Startup
     /// Disk" only choose where the panel opens.
     func chooseFolder(startingAt directory: URL? = nil) {
+        guard let url = Self.pickFolder(startingAt: directory) else { return }
+        open(url)
+    }
+
+    /// The folder picker. The folder it returns is readable by the whole app,
+    /// so it can be scanned in another window or tab.
+    static func pickFolder(startingAt directory: URL? = nil) -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
@@ -95,8 +102,8 @@ final class Session {
         panel.prompt = String(localized: "Scan")
         panel.message = String(localized: "Choose a folder or disk to scan.")
         if let directory { panel.directoryURL = directory }
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        open(url)
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
     }
 
     /// Scans `url`. It must be readable: picked in a panel, dropped, or

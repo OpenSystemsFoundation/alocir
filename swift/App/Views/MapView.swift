@@ -8,16 +8,17 @@ struct MapView: View {
     @Bindable var session: Session
     let tree: LiveTree
     @Environment(AppSettings.self) private var settings
+    @Environment(\.openWindow) private var openWindow
     @FocusState private var searchFocused: Bool
 
     var body: some View {
         @Bindable var settings = settings
-        TreemapArea(session: session, tree: tree)
-            .overlay(alignment: .bottom) {
-                StatusCapsule(session: session, tree: tree)
-                    .padding(.bottom, 16)
-                    .padding(.horizontal, 24)
-            }
+        // The status bar sits below the map, not over it, so it never covers
+        // tiles.
+        VStack(spacing: 0) {
+            TreemapArea(session: session, tree: tree)
+            StatusBar(session: session, tree: tree)
+        }
             .navigationTitle(tree.focus === tree.root ? displayName(of: tree.root) : tree.focus.name)
             .navigationSubtitle(Formatting.size(tree.focus.size))
             .toolbar { toolbar }
@@ -56,6 +57,12 @@ struct MapView: View {
                 Label("Rescan", systemImage: "arrow.clockwise")
             }
             .help("Scan the folder again (⌘R)")
+            Button {
+                TabRequests.shared.scanFolderInNewTab(openWindow: openWindow)
+            } label: {
+                Label("New Scan", systemImage: "plus")
+            }
+            .help("Scan another folder in a new tab (⌥⌘O)")
             Button {
                 settings.showInspector.toggle()
             } label: {
@@ -140,11 +147,23 @@ struct TreemapArea: View {
     @State private var size: CGSize = .zero
     @State private var zoomTransform = ZoomTransform.identity
     @State private var crossFade = 1.0
+    /// Folder tints: the dominant kind of each folder below the focus.
+    @State private var folderKinds: [ObjectIdentifier: FileKind] = [:]
+    @State private var folderKindsID = 0
+    @State private var folderKindsKey: FolderKindsKey?
+    @State private var folderKindsVersion: UInt64 = 0
+    @State private var folderKindsRefresh: Task<Void, Never>?
 
     struct LayoutKey: Equatable {
         var version: UInt64
         var focus: ObjectIdentifier
         var size: CGSize
+        var depth: Int
+    }
+
+    /// What the folder tints were computed for.
+    struct FolderKindsKey: Equatable {
+        var focus: ObjectIdentifier
         var depth: Int
     }
 
@@ -158,6 +177,7 @@ struct TreemapArea: View {
                 if let layout {
                     TreemapCanvas(
                         layout: layout, layoutID: layoutID, palette: settings.palette,
+                        folderKinds: folderKinds, folderKindsID: folderKindsID,
                         showLabels: settings.showLabels, searchActive: session.search.query != nil,
                         searchID: searchID, isDark: colorScheme == .dark,
                         increasedContrast: contrast == .increased
@@ -193,6 +213,7 @@ struct TreemapArea: View {
         layout = new
         layoutID &+= 1
         size = key.size
+        updateFolderKinds(key)
         guard let zoom = session.zoom, key.size.width > 0, key.size.height > 0 else { return }
         session.zoomFinished()
         if reduceMotion {
@@ -215,6 +236,36 @@ struct TreemapArea: View {
             zoomTransform = ZoomTransform(scale: scale, offset: CGPoint(x: -rect.minX * scale.width, y: -rect.minY * scale.height))
         }
         withAnimation(.smooth(duration: 0.35)) { zoomTransform = .identity }
+    }
+
+    /// Folder tints read the whole subtree (about 17 ms for half a million
+    /// items), so they are computed right away only when the focus or depth
+    /// changes. While files change they keep their colours and refresh a
+    /// second later, so a burst of changes costs one pass. Resizing never
+    /// recomputes them.
+    private func updateFolderKinds(_ key: LayoutKey) {
+        let wanted = FolderKindsKey(focus: key.focus, depth: key.depth)
+        if wanted != folderKindsKey {
+            folderKindsRefresh?.cancel()
+            folderKindsRefresh = nil
+            computeFolderKinds(wanted, version: key.version)
+            return
+        }
+        guard key.version != folderKindsVersion, folderKindsRefresh == nil else { return }
+        folderKindsRefresh = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            folderKindsRefresh = nil
+            computeFolderKinds(
+                FolderKindsKey(focus: ObjectIdentifier(tree.focus), depth: settings.nestingDepth), version: tree.version)
+        }
+    }
+
+    private func computeFolderKinds(_ key: FolderKindsKey, version: UInt64) {
+        folderKinds = FolderKinds.dominantKinds(below: tree.focus, levels: key.depth)
+        folderKindsKey = key
+        folderKindsVersion = version
+        folderKindsID &+= 1
     }
 }
 
@@ -369,56 +420,75 @@ struct InteractionLayer: View {
     }
 }
 
-/// The floating glass capsule: the hovered item, or an error for six seconds.
-struct StatusCapsule: View {
+/// The status bar below the map: the hovered item (or an error, for six
+/// seconds) on the left, and the scan's totals on the right, always visible.
+struct StatusBar: View {
     let session: Session
     let tree: LiveTree
 
     var body: some View {
-        Group {
-            if let notice = session.notice {
-                Label(notice.message, systemImage: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .lineLimit(2)
-            } else if let node = session.hovered {
-                HStack(spacing: 10) {
-                    Image(systemName: node.isDirectory ? "folder.fill" : node.kind.symbol)
-                        .foregroundStyle(.secondary)
-                    Text(node.name)
-                        .fontWeight(.medium)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(Formatting.size(node.size))
-                        .monospacedDigit()
-                        .foregroundStyle(.secondary)
-                    Text(Formatting.percent(node.size, of: tree.focus.size))
-                        .monospacedDigit()
-                        .foregroundStyle(.tertiary)
-                }
-            } else {
-                HStack(spacing: 10) {
-                    Image(systemName: "internaldrive")
-                        .foregroundStyle(.secondary)
-                    Text(Formatting.size(tree.root.size))
-                        .monospacedDigit()
-                    if let items = session.lastScanItems {
-                        Text("\(Formatting.count(items)) items")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                    }
-                    if let duration = session.lastScanDuration {
-                        Text("Scanned in \(Formatting.duration(duration))")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
+        HStack(spacing: 10) {
+            leading
+                .frame(maxWidth: .infinity, alignment: .leading)
+            totals
+                .layoutPriority(1)
         }
         .font(.callout)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .glassEffect(.regular, in: .capsule)
-        .animation(.smooth(duration: 0.15), value: session.hovered.map(ObjectIdentifier.init))
+        .lineLimit(1)
+        .padding(.horizontal, 14)
+        .frame(height: 30)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+        .overlay(alignment: .top) { Divider() }
         .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var leading: some View {
+        if let notice = session.notice {
+            Label(notice.message, systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+        } else if let node = session.hovered {
+            HStack(spacing: 8) {
+                Image(systemName: node.isDirectory ? "folder.fill" : node.kind.symbol)
+                    .foregroundStyle(.secondary)
+                Text(verbatim: node.name)
+                    .fontWeight(.medium)
+                    .truncationMode(.middle)
+                Text(Formatting.size(node.size))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+                Text(Formatting.percent(node.size, of: tree.focus.size))
+                    .monospacedDigit()
+                    .foregroundStyle(.tertiary)
+                    .fixedSize()
+            }
+        } else {
+            Text(verbatim: tree.scanPath)
+                .foregroundStyle(.secondary)
+                .truncationMode(.head)
+        }
+    }
+
+    private var totals: some View {
+        HStack(spacing: 10) {
+            Label {
+                Text(Formatting.size(tree.root.size)).monospacedDigit()
+            } icon: {
+                Image(systemName: "internaldrive").foregroundStyle(.secondary)
+            }
+            if let items = session.lastScanItems {
+                Text("\(Formatting.count(items)) items")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            if let duration = session.lastScanDuration {
+                Text("Scanned in \(Formatting.duration(duration))")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .fixedSize()
     }
 }
 

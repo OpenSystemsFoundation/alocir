@@ -43,12 +43,28 @@ struct WindowRoot: View {
             .frame(minWidth: 760, minHeight: 520)
             .preferredColorScheme(settings.appearance.colorScheme)
             .focusedSceneValue(\FocusedValues.session, session)
+            .background(WindowAccessor { window in adopt(window) })
             .onAppear { claimPendingFolder() }
             .onChange(of: requests.pending) { claimPendingFolder() }
             .task {
                 guard ScreenshotMode.isActive else { return }
-                await ScreenshotMode.stage(session, openSettings: openSettings)
+                await ScreenshotMode.stage(session, openSettings: openSettings, openWindow: openWindow)
             }
+    }
+
+    /// Every scan window can be a tab of another. A window opened for a tab
+    /// request joins the window it was asked from, and scans the request's
+    /// folder if it has one.
+    private func adopt(_ window: NSWindow) {
+        window.tabbingIdentifier = TabRequests.tabbingIdentifier
+        guard let request = TabRequests.shared.take(for: window) else { return }
+        if let host = request.host, host !== window, host.isVisible {
+            host.addTabbedWindow(window, ordered: .above)
+            window.makeKeyAndOrderFront(nil)
+        }
+        if let folder = request.folder {
+            session.open(folder)
+        }
     }
 
     /// Folders dropped on the Dock icon or opened from Finder go to an idle
@@ -80,6 +96,86 @@ struct RootView: View {
         case .map(let tree):
             MapView(session: session, tree: tree)
                 .id(ObjectIdentifier(tree))
+        }
+    }
+}
+
+// MARK: - Tabs
+
+/// New tabs: each scan is a window, and a window opened through here joins
+/// the window it was asked from as a tab (the system's own window tabs, with
+/// their tab bar, Merge All Windows and dragging a tab out).
+@MainActor
+final class TabRequests {
+    static let shared = TabRequests()
+    static let tabbingIdentifier = "com.jeffkroon.alocir.scan"
+
+    struct Request {
+        /// The window the tab joins.
+        weak var host: NSWindow?
+        /// Scanned in the new tab right away; `nil` shows the start screen.
+        var folder: URL?
+        /// Windows that existed when the tab was asked for: none of them is
+        /// the new tab, even if it reports in late.
+        var existing: Set<Int>
+    }
+
+    private var pending: [Request] = []
+
+    /// Opens a tab next to the key window, optionally scanning `folder`.
+    func openTab(folder: URL? = nil, openWindow: OpenWindowAction) {
+        let existing = Set(NSApp.windows.map(\.windowNumber))
+        pending.append(Request(host: Self.hostWindow(), folder: folder, existing: existing))
+        openWindow(id: "main")
+    }
+
+    /// The window a new tab joins: the key window, or when the app isn't
+    /// active (in the background, or opening a folder from the Dock) the
+    /// frontmost scan window.
+    private static func hostWindow() -> NSWindow? {
+        func isScanWindow(_ window: NSWindow?) -> Bool {
+            guard let window else { return false }
+            // SwiftUI names the windows of the "main" group "main-…".
+            return window.isVisible && (window.identifier?.rawValue.hasPrefix("main") ?? false)
+        }
+        if isScanWindow(NSApp.keyWindow) { return NSApp.keyWindow }
+        if isScanWindow(NSApp.mainWindow) { return NSApp.mainWindow }
+        return NSApp.orderedWindows.first(where: isScanWindow)
+    }
+
+    /// Asks for a folder, then scans it in a new tab.
+    func scanFolderInNewTab(openWindow: OpenWindowAction) {
+        guard let folder = Session.pickFolder() else { return }
+        openTab(folder: folder, openWindow: openWindow)
+    }
+
+    /// The oldest request `window` can be the tab for.
+    func take(for window: NSWindow) -> Request? {
+        guard let index = pending.firstIndex(where: { !$0.existing.contains(window.windowNumber) }) else { return nil }
+        return pending.remove(at: index)
+    }
+}
+
+/// Hands the NSWindow a SwiftUI view lives in to `onWindow`, once.
+struct WindowAccessor: NSViewRepresentable {
+    let onWindow: (NSWindow) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = WindowTrackingView()
+        view.onWindow = onWindow
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    final class WindowTrackingView: NSView {
+        var onWindow: ((NSWindow) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard let window, let onWindow else { return }
+            self.onWindow = nil
+            onWindow(window)
         }
     }
 }
@@ -135,6 +231,10 @@ struct AlocirCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Window") { openWindow(id: "main") }
                 .keyboardShortcut("n")
+            Button("New Tab") { TabRequests.shared.openTab(openWindow: openWindow) }
+                .keyboardShortcut("t")
+            Button("Open in New Tab…") { TabRequests.shared.scanFolderInNewTab(openWindow: openWindow) }
+                .keyboardShortcut("o", modifiers: [.command, .option])
             Button("Open…") {
                 if let session {
                     session.chooseFolder()

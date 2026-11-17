@@ -1,22 +1,26 @@
 import AlocirCore
 import SwiftUI
 
-/// A colour per file kind. Generic names only (no third-party names).
+/// A colour per file kind, for light and dark mode alike. Generic names only
+/// (no third-party names).
+///
+/// - `modern`: the default, with flat tiles and a soft gloss.
+/// - `classic`: the candy colours and glossy gel tiles of the desktop before
+///   glass (Settings › Classic colors).
 enum Palette: String, CaseIterable, Identifiable, Codable {
-    case spectrum, aurora, ember, ocean, graphite, phosphor
+    case modern, classic
 
     var id: String { rawValue }
 
     var name: LocalizedStringKey {
         switch self {
-        case .spectrum: "Spectrum"
-        case .aurora: "Aurora"
-        case .ember: "Ember"
-        case .ocean: "Ocean"
-        case .graphite: "Graphite"
-        case .phosphor: "Phosphor"
+        case .modern: "Modern"
+        case .classic: "Classic"
         }
     }
+
+    /// Classic tiles are drawn as glossy gel; modern ones get a soft gloss.
+    var isClassic: Bool { self == .classic }
 
     /// Fill for files of `kind`. Folders are drawn as frames (`folderTint`).
     func color(for kind: FileKind) -> Color {
@@ -28,33 +32,51 @@ enum Palette: String, CaseIterable, Identifiable, Codable {
         .image, .video, .audio, .document, .archive, .code, .application, .system, .other,
     ]
 
-    var folderTint: Color {
+    var folderTint: Color { Color(rgb: folderTintRGB) }
+
+    private var folderTintRGB: UInt32 {
         switch self {
-        case .phosphor: Color(rgb: 0x1F7A3A)
-        case .graphite: Color(rgb: 0x6B7280)
-        case .ember: Color(rgb: 0x9A3B2E)
-        case .ocean: Color(rgb: 0x1F5F8B)
-        case .aurora: Color(rgb: 0x5B4B9A)
-        case .spectrum: Color(rgb: 0x4A5578)
+        case .modern: 0x4A5578
+        case .classic: 0x5B7FA6
         }
+    }
+
+    /// A folder's colour: the colour of the kind of file that takes the
+    /// most space in it, mixed with the folder tint so folders still read as
+    /// folders, or the plain tint when it holds no files. `shade` (0–3)
+    /// nudges it lighter or darker, so neighbouring folders with the same
+    /// contents stay apart.
+    func folderRGB(holding kind: FileKind?, shade: UInt8) -> UInt32 {
+        var rgb = kind.map { Self.mix(hex(for: $0), folderTintRGB, 0.4) } ?? folderTintRGB
+        switch shade & 3 {
+        case 1: rgb = Self.mix(rgb, 0xFFFFFF, 0.12)
+        case 2: rgb = Self.mix(rgb, 0x000000, 0.12)
+        case 3: rgb = Self.mix(rgb, 0xFFFFFF, 0.22)
+        default: break
+        }
+        return rgb
+    }
+
+    /// `a` moved `amount` (0–1) of the way to `b`, per sRGB channel.
+    private static func mix(_ a: UInt32, _ b: UInt32, _ amount: Double) -> UInt32 {
+        var out: UInt32 = 0
+        for shift in [16, 8, 0] as [UInt32] {
+            let x = Double((a >> shift) & 0xFF)
+            let y = Double((b >> shift) & 0xFF)
+            out |= UInt32((x + (y - x) * amount).rounded()) << shift
+        }
+        return out
     }
 
     private func hex(for kind: FileKind) -> UInt32 {
         let table: [UInt32]
         // Order: image, video, audio, document, archive, code, application, system, other
         switch self {
-        case .spectrum:
+        case .modern:
             table = [0x34A853, 0xE5484D, 0xA855F7, 0x3B82F6, 0xF59E0B, 0x14B8A6, 0xEC4899, 0x8B95A7, 0x64748B]
-        case .aurora:
-            table = [0x5EEAD4, 0xC084FC, 0xF472B6, 0x60A5FA, 0xFBBF24, 0x4ADE80, 0xA78BFA, 0x94A3B8, 0x7C8AA5]
-        case .ember:
-            table = [0xF97316, 0xDC2626, 0xFB7185, 0xFBBF24, 0xB45309, 0xEAB308, 0xE11D48, 0xA8A29E, 0x78716C]
-        case .ocean:
-            table = [0x22D3EE, 0x3B82F6, 0x818CF8, 0x0EA5E9, 0x2DD4BF, 0x38BDF8, 0x6366F1, 0x94A3B8, 0x64748B]
-        case .graphite:
-            table = [0x9CA3AF, 0x6B7280, 0xA1A1AA, 0xD4D4D8, 0x71717A, 0xB4B4BC, 0x8E8E96, 0x5B5B63, 0x7A7A82]
-        case .phosphor:
-            table = [0x4ADE80, 0x22C55E, 0x86EFAC, 0xBEF264, 0x16A34A, 0xA3E635, 0x65A30D, 0x3F6212, 0x4D7C0F]
+        case .classic:
+            // Aqua blue, lime, tangerine, grape, strawberry and graphite.
+            table = [0x6CC04A, 0xE03A4E, 0x9B59D0, 0x2F87E8, 0xF39A1E, 0x23AFC0, 0xE85FA8, 0x9AA3AD, 0x7A828C]
         }
         switch kind {
         case .image: return table[0]
@@ -71,7 +93,11 @@ enum Palette: String, CaseIterable, Identifiable, Codable {
 
     /// Label colour that keeps contrast on a tile of `kind`.
     func labelColor(for kind: FileKind) -> Color {
-        let rgb = hex(for: kind)
+        Self.labelColor(on: hex(for: kind))
+    }
+
+    /// Label colour that keeps contrast on a fill of `rgb`.
+    static func labelColor(on rgb: UInt32) -> Color {
         let r = Double((rgb >> 16) & 0xFF) / 255, g = Double((rgb >> 8) & 0xFF) / 255, b = Double(rgb & 0xFF) / 255
         func linear(_ c: Double) -> Double { c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4) }
         let luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)

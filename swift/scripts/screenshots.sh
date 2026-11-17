@@ -8,8 +8,9 @@ out="${2:?usage: screenshots.sh Alocir.app output-folder}"
 binary="$app/Contents/MacOS/Alocir"
 mkdir -p "$out"
 
-scenes=$(grep -o '"[a-z-]*"' "$(dirname "$0")/../App/Support/ScreenshotMode.swift" \
-    | sed -n '/"start"/,/"settings-dark"/p' | tr -d '"')
+# SCENES="start map" captures only those; by default every CI scene.
+scenes="${SCENES:-$(grep -o '"[a-z-]*"' "$(dirname "$0")/../App/Support/ScreenshotMode.swift" \
+    | sed -n '/"start"/,/"settings-dark"/p' | tr -d '"')}"
 
 timeout="${SCREENSHOT_TIMEOUT:-120}"
 failed=0
