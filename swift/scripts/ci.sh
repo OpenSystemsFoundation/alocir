@@ -29,6 +29,11 @@ echo "::group::Totals: Swift vs Rust scanner"
 ./scripts/compare-totals.sh
 echo "::endgroup::"
 
+# Proves the benchmark script runs; CI timings mean nothing for a real Mac.
+echo "::group::bench.sh smoke run"
+./scripts/bench.sh "$PWD/Sources"
+echo "::endgroup::"
+
 echo "::group::xcodebuild"
 xcodebuild -project Alocir.xcodeproj -scheme Alocir -configuration Release \
     -destination 'generic/platform=macOS' -derivedDataPath build \
