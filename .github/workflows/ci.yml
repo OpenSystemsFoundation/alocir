@@ -197,6 +197,21 @@ jobs:
         continue-on-error: true
         run: ./swift/scripts/screenshots.sh swift/build/Build/Products/Release/Alocir.app "$RUNNER_TEMP/screenshots"
 
+      # Small JPEG copies in the log, for reviewers that can read the log
+      # but not download artifacts. Decode a block with `base64 -d`.
+      - name: Print screenshot previews
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          for png in "$RUNNER_TEMP"/screenshots/*.png; do
+            jpg="$RUNNER_TEMP/$(basename "$png" .png).jpg"
+            sips -s format jpeg -s formatOptions 70 --resampleWidth 1280 "$png" --out "$jpg" >/dev/null
+            echo "SCREENSHOT-BEGIN $(basename "$jpg")"
+            base64 -b 0 -i "$jpg"; echo
+            echo "SCREENSHOT-END"
+          done
+
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@v4
