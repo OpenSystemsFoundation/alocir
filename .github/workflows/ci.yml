@@ -192,6 +192,19 @@ jobs:
       - name: Build, test and check the Swift app
         run: ./swift/scripts/ci.sh
 
+      # Each screen with demo data, light and dark, for reviewing the design.
+      - name: Screenshots
+        continue-on-error: true
+        run: ./swift/scripts/screenshots.sh swift/build/Build/Products/Release/Alocir.app "$RUNNER_TEMP/screenshots"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
+
   # Swift vs Rust scanner on the same runner: a synthetic tree and two real
   # ones from the image. Shared runners are noisy, so this reports medians
   # and is a comparison, not a measure of speed on a real Mac. The table is

@@ -79,20 +79,27 @@ for binary in "${binaries[@]}"; do
     # Selector-shaped names (`_helpCursor`, `_wantsKeyDownForEvent:`) only
     # count in Objective-C selector names (__objc_methname); private
     # function names looked up with dlsym (CGS*, SLS*, CPS*, the deny list)
-    # count anywhere in C strings (__cstring) too. Swift metadata holds
-    # names such as `_isSearching` (the storage @Observable generates for
-    # `isSearching`), which are neither.
+    # count in C strings (__cstring) too.
     section_strings() {
         for arch in $(lipo -archs "$binary"); do
             otool -arch "$arch" -X -v -s __TEXT "$1" "$binary" 2>/dev/null \
                 | sed -E 's/^[0-9a-f]+[[:space:]]+//'
         done | sort -u
     }
+    # Instance variable names share __objc_methname with selectors; a Swift
+    # class's stored properties appear there (`_isSearching`), so leave out
+    # every name `otool -ov` lists as an ivar (the `name` after `offset`).
+    ivar_names() {
+        for arch in $(lipo -archs "$binary"); do
+            otool -arch "$arch" -ov "$binary" 2>/dev/null \
+                | awk '$1 == "offset" { ivar = 1; next } ivar && $1 == "name" { print $NF } { ivar = 0 }'
+        done | sort -u
+    }
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
         report "private selector named in the binary: $name"
         found=1
-    done < <(section_strings __objc_methname | grep -E \
+    done < <(comm -23 <(section_strings __objc_methname) <(ivar_names) | grep -E \
         -e '^_[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*(:([A-Za-z0-9]+:)*)?$' \
         -e "$DENY_SELECTORS" | awk 'length >= 8' || true)
     while IFS= read -r name; do

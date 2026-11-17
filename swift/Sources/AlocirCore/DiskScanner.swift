@@ -16,6 +16,13 @@ public final class ScanProgress: Sendable {
 
     public init() {}
 
+    /// Fixed figures, for previews and screenshots.
+    public convenience init(items: UInt64, bytes: UInt64, currentPath: String) {
+        self.init()
+        add(items: items, bytes: bytes)
+        path.withLock { $0 = currentPath }
+    }
+
     /// Files and directories counted so far.
     public var itemsScanned: UInt64 { items.load(ordering: .relaxed) }
     /// Allocated bytes counted so far.
