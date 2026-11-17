@@ -12,7 +12,7 @@
 /// while any node in it is used. The root of a scan is named by the full scan
 /// path (for example `/Users/me`), so `path` works without other context.
 public final class FileNode: @unchecked Sendable {
-    public let name: String
+    public internal(set) var name: String
     /// Allocated bytes. For a directory, the sum of its children.
     public internal(set) var size: UInt64
     /// Sorted by size, descending.
