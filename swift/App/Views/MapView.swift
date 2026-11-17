@@ -87,35 +87,116 @@ extension FocusedValues {
 }
 
 /// Breadcrumb of the focused folder's path, as the toolbar's principal item.
+///
+/// Deep paths don't fit, so it works like a jump bar: the scanned folder and
+/// the focused one are always shown, the nearest folders above the focus
+/// fill whatever room is left, and the rest fold into one "⋯" menu, in path
+/// order. Each name is capped in width, so one long name can't crowd out the
+/// others. On a very narrow toolbar the scanned folder folds into the menu
+/// too.
 struct Breadcrumb: View {
     let session: Session
     let tree: LiveTree
 
+    /// Widest a single crumb gets before its name is shortened in the middle.
+    private static let maxCrumbWidth: CGFloat = 150
+    /// Toolbar text size, used to measure names.
+    private static let fontSize: CGFloat = 13
+    /// The most trail variants tried, longest first.
+    private static let maxVariants = 10
+
     var body: some View {
         let chain = ancestors()
+        // Folders between the scanned one and the focus.
+        let middle = max(chain.count - 2, 0)
+        let shownCounts = Array((0...min(middle, Self.maxVariants)).reversed())
+        ViewThatFits(in: .horizontal) {
+            ForEach(shownCounts, id: \.self) { shown in
+                trail(chain, nearest: shown, keepRoot: true)
+            }
+            trail(chain, nearest: 0, keepRoot: false)
+        }
+        .padding(.horizontal, 10)
+        .frame(maxWidth: 560)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Path")
+    }
+
+    /// The scanned folder (unless `keepRoot` is false), a "⋯" menu for the
+    /// folders left out, the `nearest` folders above the focus, and the focus.
+    @ViewBuilder
+    private func trail(_ chain: [FileNode], nearest: Int, keepRoot: Bool) -> some View {
         HStack(spacing: 2) {
-            ForEach(Array(chain.enumerated()), id: \.offset) { index, node in
-                if index > 0 {
-                    Image(systemName: "chevron.compact.right")
-                        .foregroundStyle(.tertiary)
-                        .imageScale(.small)
+            if chain.count == 1 {
+                // At the scanned folder itself.
+                crumb(chain[0], isRoot: true)
+            } else {
+                let firstShown = max(chain.count - 1 - nearest, 1)
+                let hidden = Array(chain[(keepRoot ? 1 : 0)..<firstShown])
+                if keepRoot {
+                    crumb(chain[0], isRoot: true)
                 }
+                if !hidden.isEmpty {
+                    if keepRoot { separator }
+                    overflowMenu(hidden)
+                }
+                ForEach(Array(chain[firstShown...])) { node in
+                    separator
+                    crumb(node, isRoot: false)
+                }
+            }
+        }
+        .fixedSize()
+    }
+
+    private var separator: some View {
+        Image(systemName: "chevron.compact.right")
+            .foregroundStyle(.tertiary)
+            .imageScale(.small)
+    }
+
+    private func crumb(_ node: FileNode, isRoot: Bool) -> some View {
+        let isFocus = node === tree.focus
+        let name = isRoot ? rootName : node.name
+        let shown =
+            LabelFitter.shared.fit(
+                name, maxWidth: Self.maxCrumbWidth, size: Self.fontSize, weight: isFocus ? .semibold : .regular,
+                keepingExtension: false) ?? name
+        return Button {
+            session.go(to: node)
+        } label: {
+            Text(verbatim: shown)
+                .lineLimit(1)
+                .fontWeight(isFocus ? .semibold : .regular)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(isFocus ? .primary : .secondary)
+        .help(node.path)
+    }
+
+    /// The folders left out of the trail, top first, each one click away.
+    private func overflowMenu(_ hidden: [FileNode]) -> some View {
+        Menu {
+            ForEach(hidden) { node in
                 Button {
                     session.go(to: node)
                 } label: {
-                    Text(index == 0 ? rootName : node.name)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .fontWeight(node === tree.focus ? .semibold : .regular)
+                    Label {
+                        Text(verbatim: node === tree.root ? rootName : node.name)
+                    } icon: {
+                        Image(systemName: node === tree.root ? "internaldrive" : "folder")
+                    }
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(node === tree.focus ? .primary : .secondary)
             }
+        } label: {
+            Image(systemName: "ellipsis")
         }
-        .padding(.horizontal, 10)
-        .frame(maxWidth: 520)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Path")
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help(Text("\(hidden.count) more folders"))
+        .accessibilityLabel(Text("\(hidden.count) more folders"))
     }
 
     private var rootName: String {

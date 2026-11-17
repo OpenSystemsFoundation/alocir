@@ -25,6 +25,21 @@ enum DemoData {
             FileNode(name: name, size: size, isDirectory: false)
         }
 
+        /// Folders 22 levels deep, with long and short names, the way package
+        /// managers and build tools nest them.
+        func deepChain() -> FileNode {
+            let names = [
+                "monorepo", "packages", "design-system-components", "node_modules", "@scope", "react-native-reanimated",
+                "node_modules", "@babel", "plugin-transform-modules-commonjs", "lib", "build", "Intermediates.noindex",
+                "ArchiveIntermediates", "Release-iphoneos", "PackageFrameworks", "SharedModuleCache.noindex",
+                "5K2PX0QO8OZFD", "Platform", "61", "cache", "Artifacts", "Products",
+            ]
+            var node = dir(names.last!, files("artifact-", ["o"], count: 3, from: 40 * 1024, to: 200 * 1024))
+            for name in names.dropLast().reversed() {
+                node = dir(name, [node])
+            }
+            return node
+        }
         let movies = dir("Movies", [
             dir("Holiday 2025", files("Clip ", ["mov", "mp4"], count: 14, from: 300 * mb, to: 2 * gb)),
             dir("Final Cut Projects", [
@@ -64,6 +79,8 @@ enum DemoData {
         ])
         let projects = dir("Projects", [
             dir("website", [dir("node_modules", files("module-", ["js", "json"], count: 60, from: 100 * 1024, to: 20 * mb)), dir("src", files("page-", ["ts", "tsx", "css"], count: 25, from: 4 * 1024, to: 200 * 1024))]),
+            // A very deep path, for the breadcrumb (small, so it doesn't show on the map).
+            deepChain(),
             dir("app", [dir("build", files("obj-", ["o", "a"], count: 40, from: 1 * mb, to: 60 * mb)), dir("Sources", files("File", ["swift"], count: 40, from: 4 * 1024, to: 80 * 1024))]),
             dir("datasets", files("export-", ["csv", "json", "parquet"], count: 12, from: 50 * mb, to: 900 * mb)),
         ])

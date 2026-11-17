@@ -28,7 +28,7 @@ enum ScreenshotMode {
 
     static let scenes = [
         "start", "start-dark", "scanning", "map", "map-dark", "drilldown",
-        "search", "selection-dark", "context-menu", "tabs", "settings", "settings-dark",
+        "search", "selection-dark", "context-menu", "tabs", "breadcrumb", "settings", "settings-dark",
         // Not captured in CI (a full-screen window gets its own Space): run by
         // hand to check full screen.
         "fullscreen", "fullscreen-dark",
@@ -78,7 +78,7 @@ enum ScreenshotMode {
                 url: URL(filePath: "/"), progress: progress,
                 started: .now.addingTimeInterval(-14), volumeUsedBytes: 402_000_000_000)
             session.showDemo(root, path: DemoData.path, scanning: scan)
-        case "map", "drilldown", "search", "selection", "context-menu", "tabs", "fullscreen", "classic":
+        case "map", "drilldown", "search", "selection", "context-menu", "tabs", "fullscreen", "classic", "breadcrumb":
             session.showDemo(root, path: DemoData.path)
         default:
             break
@@ -113,6 +113,14 @@ enum ScreenshotMode {
             }
         case "search":
             session.searchText = ">1gb"
+        case "breadcrumb":
+            // The bottom of the deepest folder chain.
+            if let tree, var node = tree.root.children.first(where: { $0.name == "Projects" })?
+                .children.first(where: { $0.name == "monorepo" })
+            {
+                while let next = node.children.first(where: \.isDirectory) { node = next }
+                session.go(to: node)
+            }
         case "selection", "context-menu":
             if let tree, let movies = tree.root.children.first(where: { $0.name == "Movies" }) {
                 tree.selection = movies.children.first { !$0.isDirectory } ?? movies
