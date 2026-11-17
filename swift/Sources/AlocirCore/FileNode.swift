@@ -7,6 +7,10 @@
 ///
 /// `children` is always sorted by size, largest first. The treemap layout
 /// depends on it.
+///
+/// `parent` is `unowned(unsafe)`: whoever owns a tree must keep its root alive
+/// while any node in it is used. The root of a scan is named by the full scan
+/// path (for example `/Users/me`), so `path` works without other context.
 public final class FileNode: @unchecked Sendable {
     public let name: String
     /// Allocated bytes. For a directory, the sum of its children.
@@ -21,6 +25,7 @@ public final class FileNode: @unchecked Sendable {
 
     /// Builds a node. For a directory with `children`, the size is the sum of
     /// the children, the children are sorted and their parent is set.
+    /// A file's kind defaults to the one its name's extension gives.
     public init(
         name: String,
         size: UInt64 = 0,
@@ -30,9 +35,11 @@ public final class FileNode: @unchecked Sendable {
     ) {
         self.name = name
         self.isDirectory = isDirectory
-        self.kind = kind ?? (isDirectory ? .directory : .other)
+        self.kind = kind ?? (isDirectory ? .directory : FileKind(fileName: name))
         if isDirectory {
-            self.children = children.sorted { $0.size > $1.size }
+            var sorted = children
+            sorted.sort { $0.size > $1.size }
+            self.children = sorted
             self.size = children.isEmpty ? size : children.reduce(0) { $0 + $1.size }
         } else {
             self.children = []
@@ -73,5 +80,28 @@ public final class FileNode: @unchecked Sendable {
             stack.append(contentsOf: node.children)
         }
         return count
+    }
+
+    /// Inserts `node` at `components` (names below this node, the last being
+    /// `node`'s own), adding its size to every directory on the way and
+    /// keeping each level sorted. Missing directories are created.
+    func graft(_ components: ArraySlice<String>, _ node: FileNode) {
+        size += node.size
+        if components.count <= 1 {
+            node.parent = self
+            children.append(node)
+        } else {
+            let first = components[components.startIndex]
+            let next: FileNode
+            if let existing = children.first(where: { $0.isDirectory && $0.name == first }) {
+                next = existing
+            } else {
+                next = FileNode(name: first, isDirectory: true)
+                next.parent = self
+                children.append(next)
+            }
+            next.graft(components.dropFirst(), node)
+        }
+        children.sort { $0.size > $1.size }
     }
 }

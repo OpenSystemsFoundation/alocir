@@ -25,6 +25,10 @@ echo "::group::swift test"
 swift test
 echo "::endgroup::"
 
+echo "::group::Totals: Swift vs Rust scanner"
+./scripts/compare-totals.sh
+echo "::endgroup::"
+
 echo "::group::xcodebuild"
 xcodebuild -project Alocir.xcodeproj -scheme Alocir -configuration Release \
     -destination 'generic/platform=macOS' -derivedDataPath build \

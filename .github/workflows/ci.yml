@@ -175,6 +175,20 @@ jobs:
       - name: Select Xcode 27.2
         run: sudo xcode-select -s /Applications/Xcode_27.2.app
 
+      # For the Rust scanner that the Swift totals are checked against.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: xcode27-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: xcode27-cargo-
+
       - name: Build, test and check the Swift app
         run: ./swift/scripts/ci.sh
 
