@@ -396,6 +396,8 @@ impl ExplorerApp {
                 }
             }
             DeferredAction::OpenTerminal(p) => open_terminal(&p),
+            DeferredAction::QuickLook(p) => alocir_shared::file_ops::quick_look(&p),
+            DeferredAction::ZoomIn(p) => self.navigate_to(p),
         }
     }
 

@@ -1,3 +1,5 @@
+use crate::kind::FileKind;
+use crate::scanner::FileNode;
 use eframe::egui::{
     self, Color32, CornerRadius, FontFamily, FontId, Margin, Shadow, Stroke, Style, TextStyle,
     Visuals,
@@ -5,7 +7,7 @@ use eframe::egui::{
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ColorScheme {
     DarkMode,
     PurpleDreams,
@@ -305,6 +307,7 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(220, 220, 220),
                 indicator: Color32::WHITE,
                 hover_boost: 30,
+                kinds: kind_colors(ColorScheme::DarkMode),
             },
             ColorScheme::PurpleDreams => ThemeColors {
                 // Purple Dreams: purple/lavender dirs, muted blue-grey files
@@ -318,6 +321,7 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(180, 175, 200),
                 indicator: Color32::from_rgb(200, 180, 255),
                 hover_boost: 25,
+                kinds: kind_colors(ColorScheme::PurpleDreams),
             },
             ColorScheme::Daylight => ThemeColors {
                 dir_base: [24, 88, 178],
@@ -330,6 +334,7 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(80, 80, 80),
                 indicator: Color32::from_rgb(30, 30, 30),
                 hover_boost: 20,
+                kinds: kind_colors(ColorScheme::Daylight),
             },
             ColorScheme::Classic => ThemeColors {
                 dir_base: [0, 0, 128],
@@ -342,6 +347,7 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(192, 192, 192),
                 indicator: Color32::from_rgb(255, 255, 0),
                 hover_boost: 35,
+                kinds: kind_colors(ColorScheme::Classic),
             },
             ColorScheme::Sky => ThemeColors {
                 dir_base: [0, 78, 152],
@@ -354,6 +360,7 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(220, 230, 240),
                 indicator: Color32::WHITE,
                 hover_boost: 25,
+                kinds: kind_colors(ColorScheme::Sky),
             },
             ColorScheme::Phosphor => ThemeColors {
                 dir_base: [0, 70, 0],
@@ -366,8 +373,91 @@ impl ColorScheme {
                 text_secondary: Color32::from_rgb(0, 200, 0),
                 indicator: Color32::from_rgb(0, 255, 0),
                 hover_boost: 20,
+                kinds: kind_colors(ColorScheme::Phosphor),
             },
         }
+    }
+}
+
+/// Tile colours by file kind for each scheme, in `FileKind` order:
+/// directory, other, image, video, audio, document, archive, code,
+/// application, system. Each scheme keeps its own character (Phosphor
+/// stays green, Classic uses its 16-colour-era tones).
+fn kind_colors(scheme: ColorScheme) -> [Color32; FileKind::COUNT] {
+    let rgb = |c: [[u8; 3]; FileKind::COUNT]| c.map(|[r, g, b]| Color32::from_rgb(r, g, b));
+    match scheme {
+        ColorScheme::DarkMode => rgb([
+            [40, 70, 140],
+            [95, 100, 120],
+            [80, 160, 80],
+            [200, 70, 70],
+            [150, 90, 200],
+            [70, 120, 210],
+            [210, 140, 50],
+            [60, 160, 150],
+            [190, 90, 150],
+            [120, 125, 140],
+        ]),
+        ColorScheme::PurpleDreams => rgb([
+            [75, 50, 130],
+            [85, 85, 110],
+            [100, 140, 110],
+            [160, 80, 120],
+            [130, 90, 180],
+            [90, 100, 170],
+            [170, 130, 90],
+            [80, 130, 150],
+            [150, 90, 160],
+            [100, 100, 125],
+        ]),
+        ColorScheme::Daylight => rgb([
+            [24, 88, 178],
+            [150, 156, 170],
+            [120, 190, 110],
+            [232, 104, 104],
+            [175, 130, 225],
+            [100, 150, 235],
+            [240, 170, 80],
+            [90, 190, 175],
+            [220, 130, 180],
+            [170, 176, 188],
+        ]),
+        ColorScheme::Classic => rgb([
+            [0, 0, 128],
+            [96, 96, 112],
+            [0, 128, 0],
+            [160, 0, 0],
+            [128, 0, 128],
+            [0, 64, 160],
+            [160, 128, 0],
+            [0, 128, 128],
+            [176, 48, 96],
+            [128, 128, 128],
+        ]),
+        ColorScheme::Sky => rgb([
+            [0, 78, 152],
+            [110, 130, 150],
+            [70, 150, 50],
+            [214, 90, 80],
+            [130, 100, 200],
+            [40, 120, 200],
+            [230, 160, 60],
+            [40, 160, 170],
+            [200, 100, 160],
+            [120, 140, 160],
+        ]),
+        ColorScheme::Phosphor => rgb([
+            [0, 70, 0],
+            [0, 60, 0],
+            [80, 220, 80],
+            [0, 170, 0],
+            [0, 190, 60],
+            [0, 110, 0],
+            [0, 140, 0],
+            [40, 200, 80],
+            [20, 150, 40],
+            [0, 90, 20],
+        ]),
     }
 }
 
@@ -447,6 +537,8 @@ pub struct ThemeColors {
     pub text_secondary: Color32,
     pub indicator: Color32,
     pub hover_boost: u8,
+    /// Tile colour for each file kind, indexed by `FileKind as usize`.
+    pub kinds: [Color32; FileKind::COUNT],
 }
 
 impl ThemeColors {
@@ -495,6 +587,24 @@ impl ThemeColors {
             dark
         };
         (primary, mix(primary, bg, 0.22))
+    }
+
+    /// Colour of a file tile of this kind.
+    pub fn kind_color(&self, kind: FileKind) -> Color32 {
+        self.kinds[kind as usize]
+    }
+
+    /// Colour of a tile: files by kind; folders in the scheme's folder
+    /// colours, tinted by the kind of file filling them when known.
+    pub fn tile_color(&self, node: &FileNode, dominant: Option<FileKind>) -> Color32 {
+        if !node.is_dir {
+            return self.kind_color(node.kind);
+        }
+        let base = self.color_for_node(&node.name, true);
+        match dominant {
+            Some(kind) => mix(base, self.kind_color(kind), 0.35),
+            None => base,
+        }
     }
 
     pub fn hover_color(&self, base: Color32) -> Color32 {

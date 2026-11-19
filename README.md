@@ -5,7 +5,7 @@
 <h1 align="center">Alocir</h1>
 
 <p align="center">
-  A cross-platform disk space visualizer built with Rust.
+  A disk space visualizer: a native app for Mac, and a Rust app for Windows, Linux and older Macs.
 </p>
 
 <p align="center">
@@ -16,18 +16,87 @@
 
 ---
 
+Alocir scans a folder in parallel and draws what's in it as a treemap: every
+file and folder is a rectangle sized by the space it takes on disk, so the
+biggest items stand out. It comes in two editions, built from this one
+repository:
+
+| | Alocir for Mac | Alocir for Windows, Linux and older Macs |
+|---|---|---|
+| Source | [`swift/`](swift/) (Swift, SwiftUI) | [`crates/`](crates/) (Rust, egui) |
+| Runs on | macOS 26 and later, Apple Silicon and Intel | 64-bit Windows and Linux; macOS 11 to 15 |
+| Get it | Mac App Store (coming soon) | [GitHub Releases](https://github.com/OpenSystemsFoundation/alocir/releases) |
+| Version | 2.x | 1.x |
+
+On a Mac with macOS 26 or later, use Alocir for Mac. The Rust edition's
+macOS download stays available for Macs that can't run macOS 26. Both
+editions count disk space the same way, and CI checks that their scanners
+report the same totals.
+
+The two editions have separate version numbers. GitHub Releases are tagged
+with the Rust edition's version (`crates/alocir/Cargo.toml`); the Mac edition's
+version is `MARKETING_VERSION` in `swift/Alocir.xcodeproj` and is released
+through the App Store.
+
 ## Features
 
-- **Interactive treemap** — Visualize disk usage with a squarified treemap layout
-- **Real disk usage** — Sizes are the space files occupy on disk (allocated blocks), so sparse files don't inflate totals, hard-linked files are counted once, and a folder reachable through two paths (such as macOS's `/Users` and `/System/Volumes/Data/Users`) is counted once when you scan the whole disk. On Windows, sizes are file lengths.
-- **Parallel scanning** — Fast directory scanning powered by Rayon
-- **Live updates** — Files created, changed, renamed, moved or deleted while you look are reflected without a rescan. On macOS and Windows the whole scanned tree is watched; on Linux only the folder you're viewing, unless you enable **Watch subfolders** in Settings (it uses one inotify watch per folder).
-- **Drill-down navigation** — Click directories to explore, breadcrumb trail to navigate back, **Rescan** to start over
-- **File operations** — Open, reveal in the file manager, copy path, rename, move to trash and open a terminal via the right-click context menu
-- **6 color schemes** — Dark Mode, Purple Dreams, Daylight, Classic, Sky and Phosphor; each styles the whole interface, not just the tiles
-- **Cross-platform** — Runs on Windows, Linux, and macOS
+Both editions:
 
-## Installation
+- **Nested treemap** — subfolders drawn inside their folders, one to eight levels deep, coloured by kind of file
+- **Real disk usage** — Sizes are the space files occupy on disk (allocated blocks), so sparse files don't inflate totals, hard-linked files are counted once, and a folder reachable through two paths (such as macOS's `/Users` and `/System/Volumes/Data/Users`) is counted once when you scan the whole disk. On Windows, sizes are file lengths.
+- **Parallel scanning** on every core
+- **Live updates** — Files created, changed, renamed, moved or deleted while you look are reflected without a rescan
+- **Search** by name, extension (`.mov`) or size (`>100mb`), with matches highlighted on the map
+- **Inspector** with the selected item's size, what kinds of files fill a folder, and its largest files
+- **Keyboard navigation** between tiles, and a quick preview (Quick Look on the Mac)
+- **File operations** from the right-click menu: open, show in the file manager, copy path, rename, move to trash
+- **Recent folders** and settings that are remembered
+
+Alocir for Mac also has window tabs, the system's glass design, and light,
+dark and classic glossy colours.
+
+Alocir for Windows, Linux and older Macs also has:
+
+- **6 color schemes** — Dark Mode, Purple Dreams, Daylight, Classic, Sky and Phosphor; each styles the whole interface, not just the tiles
+- **Open a terminal** in any folder from the right-click menu
+- A command line: `alocir [--theme NAME] [FOLDER]`
+- On Linux, an optional **Watch subfolders** setting (inotify uses one watch per folder, so by default only the folder you're viewing is watched)
+
+## Alocir for Mac
+
+### Install
+
+Alocir for Mac is coming soon to the Mac App Store.
+
+### Build from source
+
+Needs Xcode 27 (the macOS 27 SDK); the app runs on macOS 26 and later.
+
+```bash
+cd swift
+swift build -c release && swift test   # engine and tests
+open Alocir.xcodeproj                  # build and run the app
+./scripts/compare-totals.sh            # Swift and Rust totals must match
+./scripts/bench.sh --runs 5 ~          # Swift vs Rust timings and memory
+```
+
+The engine (`AlocirCore`) is a Swift package with no dependencies; the app uses
+only system frameworks. [docs/swift-rewrite.md](docs/swift-rewrite.md) has the
+design, and [docs/mac-app-store.md](docs/mac-app-store.md) the store release
+process.
+
+### Usage
+
+1. Click **Choose Folder…**, **Home** or **Startup Disk**, pick a recent folder, or drop a folder on the window
+2. Click a tile to select it and see it in the inspector; double-click a folder to zoom into it
+3. Go back with the path bar, **Delete** or **Cmd+↑**; move between tiles with the arrow keys; **Space** opens Quick Look
+4. Search with **Cmd+F**; rescan with **Cmd+R**
+5. **Right-click** any tile for file operations
+
+To scan folders macOS protects, grant Alocir **Full Disk Access** in **System
+Settings → Privacy & Security**.
+
+## Alocir for Windows, Linux and older Macs
 
 ### Download a release
 
@@ -37,36 +106,23 @@ Pre-built binaries are available on the [Releases](https://github.com/OpenSystem
 |----------|----------|
 | Windows (x86_64) | `alocir-windows-x86_64.zip` |
 | Linux (x86_64) | `alocir-linux-x86_64.zip` |
-| macOS (Universal — Apple Silicon & Intel) | `alocir-macos-universal.zip` |
-
-#### Opening the app on macOS
+| macOS 11 to 15 (Universal — Apple Silicon & Intel) | `alocir-macos-universal.zip` |
 
 The macOS app is signed with a Developer ID and notarized by Apple, so it opens
-like any other downloaded app.
-
-Releases up to v0.2.0 were only ad-hoc signed, and Gatekeeper blocks them on
-first launch. To open one of those: **right-click** `Alocir.app` → **Open** →
-**Open**, or run `xattr -cr /Applications/Alocir.app` in Terminal.
-
-To scan folders macOS protects (such as other users' folders or system
-locations), grant Alocir **Full Disk Access** in **System Settings → Privacy &
-Security**.
+like any other downloaded app. Releases up to v0.2.0 were only ad-hoc signed,
+and Gatekeeper blocks them on first launch. To open one of those:
+**right-click** `Alocir.app` → **Open** → **Open**, or run
+`xattr -cr /Applications/Alocir.app` in Terminal.
 
 ### Build from source
 
-#### Prerequisites
-
-- [Rust](https://www.rust-lang.org/tools/install) (1.87+; eframe needs 1.81, `u64::is_multiple_of` needs 1.87)
-
-#### Build and run
+Needs [Rust](https://www.rust-lang.org/tools/install) 1.87 or later (eframe needs 1.81, `u64::is_multiple_of` needs 1.87).
 
 ```bash
 cargo run --release -p alocir
 ```
 
 The compiled binary will be at `target/release/alocir` (or `alocir.exe` on Windows).
-
-#### Run tests and benchmarks
 
 ```bash
 cargo test --workspace
@@ -90,20 +146,24 @@ baseline with `-- --save-baseline before` and compare later runs with
 `--notarize` needs `NOTARY_PROFILE` (a profile saved with
 `xcrun notarytool store-credentials`) or an App Store Connect API key in
 `APPLE_API_KEY_PATH`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER_ID`. The usage
-comment at the top of the script documents every option, including the Mac App
-Store build (`--app-store`), described in [docs/mac-app-store.md](docs/mac-app-store.md).
+comment at the top of the script documents every option. Its `--app-store`
+mode built the 1.0 store package; from 2.0 the store gets Alocir for Mac
+instead.
 
-## Usage
+### Usage
 
-1. Launch the app and **choose a folder** (or drop one onto the window, or use **Scan Home Folder**)
-2. The treemap fills the window once scanning completes; the status bar shows the hovered item or current path
-3. **Click** a folder tile to drill down into it
-4. Go back with the **Up** button, the **breadcrumb bar**, **Backspace**/**Escape** or the mouse **back** button
-5. **Right-click** any tile for file operations (open, reveal, copy path, rename, move to trash, open terminal)
+1. Launch the app and **choose a folder**, click **Home** or **Startup Disk**, pick a recent folder, or drop a folder onto the window
+2. Click a tile to select it and see it in the inspector; **double-click** a folder to zoom into it
+3. Go back with the **Up** button, the **breadcrumb bar**, **Backspace** or the mouse **back** button; **Cmd/Ctrl+↑** goes up, **Cmd/Ctrl+Shift+↑** to the top
+4. Move between tiles with the **arrow keys**; **Space** previews, **Return** renames, **Cmd/Ctrl+↓** zooms in, **Cmd/Ctrl+Backspace** moves to the trash
+5. Search with **Cmd/Ctrl+F**; show or hide the inspector with **Cmd/Ctrl+Alt+I**
 6. **Rescan** with the toolbar button, **Cmd/Ctrl+R** or **F5**
-7. Click the **gear icon** to change the color scheme
+7. Click the **gear icon** for the color scheme, nesting depth, labels and recent folders
 
-### Command line
+Settings and recent folders are kept in `~/Library/Application Support/Alocir`
+(macOS), `%APPDATA%\Alocir` (Windows) or `~/.config/alocir` (Linux).
+
+#### Command line
 
 ```
 alocir [--theme NAME] [FOLDER]
@@ -112,7 +172,7 @@ alocir [--theme NAME] [FOLDER]
 `FOLDER` is scanned straight away, skipping the start screen. `--theme` picks
 the color scheme: `dark`, `purple`, `daylight`, `classic`, `sky` or `phosphor`.
 
-## Dependencies
+### Dependencies
 
 | Crate | Purpose |
 |-------|---------|
@@ -124,7 +184,7 @@ the color scheme: `dark`, `purple`, `daylight`, `classic`, `sky` or `phosphor`.
 
 ## Privacy
 
-Alocir collects no data and has no network access. See the [privacy policy](PRIVACY.md).
+Neither edition collects data or has network access. See the [privacy policy](PRIVACY.md).
 
 ## License
 

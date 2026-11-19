@@ -130,6 +130,14 @@ else
     cargo build "${CARGO_ARGS[@]}"
 fi
 
+# App Review rejects binaries that use private APIs, so a store build stops
+# here, before signing or uploading. Upstream winit uses some (1.0.0 was
+# rejected for one), so this store path no longer passes: the Mac App Store
+# gets the Swift app in swift/ now. Developer ID builds don't need the check.
+if $APP_STORE; then
+    "$SCRIPT_DIR/check-private-apis.sh" "$BUILD_DIR/alocir"
+fi
+
 echo "==> Creating app bundle..."
 rm -rf "$BUNDLE_DIR"
 mkdir -p "$BUNDLE_DIR/Contents/MacOS"

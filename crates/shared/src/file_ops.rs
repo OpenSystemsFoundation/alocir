@@ -18,6 +18,23 @@ pub fn open_path(path: &Path) {
     }
 }
 
+/// Preview a file: Quick Look on macOS (through `qlmanage`, the system's
+/// own command-line front end), the default application elsewhere.
+pub fn quick_look(path: &Path) {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Stdio;
+        let _ = std::process::Command::new("qlmanage")
+            .arg("-p")
+            .arg(path)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+    }
+    #[cfg(not(target_os = "macos"))]
+    open_path(path);
+}
+
 /// Reveal a file in the native file manager (Finder / Explorer / etc).
 pub fn reveal_in_file_manager(path: &Path) {
     #[cfg(target_os = "macos")]

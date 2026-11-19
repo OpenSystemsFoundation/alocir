@@ -2,9 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, swift-rewrite]
   pull_request:
-    branches: [main]
+    # swift-rewrite is the integration branch for the Swift app; its
+    # workstream pull requests are checked here too.
+    branches: [main, swift-rewrite]
   workflow_dispatch:
 
 env:
@@ -159,6 +161,126 @@ jobs:
         with:
           name: alocir-macos-universal
           path: alocir-macos-universal.zip
+
+  # The native Swift app in swift/ (see docs/swift-rewrite.md). Needs the
+  # macOS 27 SDK, which only the xcode-27 image has (a preview label; check
+  # the actions/runner-images README if it stops being picked up).
+  swift:
+    name: Swift (macOS 27 SDK)
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 27.2
+        run: sudo xcode-select -s /Applications/Xcode_27.2.app
+
+      # For the Rust scanner that the Swift totals are checked against.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: xcode27-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: xcode27-cargo-
+
+      - name: Build, test and check the Swift app
+        run: ./swift/scripts/ci.sh
+
+      # For the macos-26 job: the same universal build, run on the oldest
+      # supported system. ditto keeps the bundle's symlinks and attributes.
+      - name: Upload the built app
+        run: ditto -c -k --keepParent swift/build/Build/Products/Release/Alocir.app "$RUNNER_TEMP/Alocir.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: alocir-app-universal
+          path: ${{ runner.temp }}/Alocir.zip
+
+      # Each screen with demo data, light and dark, for reviewing the design.
+      - name: Screenshots
+        continue-on-error: true
+        run: ./swift/scripts/screenshots.sh swift/build/Build/Products/Release/Alocir.app "$RUNNER_TEMP/screenshots"
+
+      # Small JPEG copies in the log, for reviewers that can read the log
+      # but not download artifacts. Decode a block with `base64 -d`.
+      - name: Print screenshot previews
+        if: always()
+        continue-on-error: true
+        run: |
+          shopt -s nullglob
+          for png in "$RUNNER_TEMP"/screenshots/*.png; do
+            jpg="$RUNNER_TEMP/$(basename "$png" .png).jpg"
+            sips -s format jpeg -s formatOptions 70 --resampleWidth 1280 "$png" --out "$jpg" >/dev/null
+            echo "SCREENSHOT-BEGIN $(basename "$jpg")"
+            base64 -b 0 -i "$jpg"; echo
+            echo "SCREENSHOT-END"
+          done
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
+
+  # The app's minimum is macOS 26, but it is built with the macOS 27 SDK. This
+  # runs the build from the swift job on macOS 26, on Apple Silicon and on
+  # Intel: the engine tests (built here with the image's own Xcode), then
+  # every screenshot scene, which fails if the app doesn't launch or draw.
+  macos-26:
+    name: Swift on macOS 26 (${{ matrix.arch }})
+    needs: swift
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26
+            arch: arm64
+            scenes: ""
+          # No GPU on the Intel runners: each scene can take a minute or two to
+          # draw, so two scenes show the app starts and draws there.
+          - runner: macos-26-intel
+            arch: x86_64
+            scenes: "start map"
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version
+
+      - name: Engine tests
+        working-directory: swift
+        run: swift test
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: alocir-app-universal
+          path: ${{ runner.temp }}
+
+      - name: Launch every screen
+        run: |
+          ditto -x -k "$RUNNER_TEMP/Alocir.zip" "$RUNNER_TEMP/app"
+          app="$RUNNER_TEMP/app/Alocir.app"
+          echo "Running the $(uname -m) slice of: $(lipo -archs "$app/Contents/MacOS/Alocir")"
+          SCENES="${{ matrix.scenes }}" ./swift/scripts/screenshots.sh "$app" "$RUNNER_TEMP/screenshots"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-macos26-${{ matrix.arch }}
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
 
   release:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

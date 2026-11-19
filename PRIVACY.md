@@ -1,10 +1,10 @@
 # Alocir Privacy Policy
 
-_Effective 15 November 2026_
+_Effective 19 November 2026_
 
-Alocir is a disk space visualizer for macOS, Windows and Linux. This policy
-covers every version of Alocir, including the one distributed through the Mac
-App Store.
+Alocir is a disk space visualizer in two editions: Alocir for Mac (version 2.0
+and later, distributed through the Mac App Store) and Alocir for Windows, Linux
+and older Macs (version 1.x, distributed on GitHub). This policy covers both.
 
 ## Summary
 
@@ -15,8 +15,21 @@ App Store.
 - Alocir reads the names and sizes of files in the folders you choose to scan,
   so it can draw a map of what uses your disk space.
 - This information stays in your computer's memory while the app is open. It is
-  never written to disk by Alocir, never sent anywhere and is discarded when
-  you close the window.
+  never sent anywhere and is discarded when you close the window.
+- Alocir for Mac remembers up to ten recently
+  scanned folders so you can open them again: each folder's path, its total
+  size, when it was scanned, and the macOS permission to read it again. This
+  list is kept in Alocir's preferences on your Mac only, and you can clear it
+  at any time with **Clear Recents** in Settings or **File → Open Recent →
+  Clear Menu**, or remove one folder from the start screen. Your appearance and
+  colour settings are kept there too.
+- Alocir for Windows, Linux and older Macs (version 1.1 and later) also
+  remembers up to ten recently scanned folders (path, total size and when it
+  was scanned), its settings and its window size, in small text files in your
+  computer's settings folder (`~/Library/Application Support/Alocir` on a
+  Mac, `%APPDATA%\Alocir` on Windows, `~/.config/alocir` on Linux). Clear the
+  list with **Clear Recents** in Settings, or remove one folder by
+  right-clicking it on the start screen.
 - Alocir only changes files when you explicitly ask it to, through its
   right-click menu: **Rename** renames the item and **Move to Trash** moves it
   to your system's Trash, where you can restore it.

@@ -9,6 +9,8 @@ pub enum DeferredAction {
     StartRename { path: PathBuf, current_name: String },
     MoveToTrash(PathBuf),
     OpenTerminal(PathBuf),
+    QuickLook(PathBuf),
+    ZoomIn(PathBuf),
 }
 
 pub fn build_context_menu(
@@ -32,8 +34,18 @@ pub fn build_context_menu(
     });
     ui.separator();
 
+    if is_dir && ui.button("Zoom In").clicked() {
+        *deferred.borrow_mut() = Some(DeferredAction::ZoomIn(item_path.to_path_buf()));
+        ui.close_menu();
+    }
+
     if ui.button("Open").clicked() {
         *deferred.borrow_mut() = Some(DeferredAction::OpenFile(item_path.to_path_buf()));
+        ui.close_menu();
+    }
+
+    if cfg!(target_os = "macos") && ui.button("Quick Look").clicked() {
+        *deferred.borrow_mut() = Some(DeferredAction::QuickLook(item_path.to_path_buf()));
         ui.close_menu();
     }
 
