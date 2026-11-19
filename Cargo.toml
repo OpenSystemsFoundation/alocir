@@ -5,10 +5,3 @@ members = [
     "crates/explorer",
     "crates/alocir",
 ]
-
-# winit 0.30's macOS backend calls private APIs (CGS* window blur, undocumented
-# NSCursor selectors, `_wantsKeyDownForEvent:`), which App Review rejects. The
-# vendored copy removes them; see vendor/winit/ALOCIR.md. `scripts/check-private-apis.sh`
-# checks the built binary.
-[patch.crates-io]
-winit = { path = "vendor/winit" }

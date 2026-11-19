@@ -19,7 +19,7 @@ permanent now that the App Store Connect app record uses it).
 | B5: sandbox testing | ⏳ Next |
 | B6: CI secrets | ⏳ Not set yet |
 | B7–B9: listing, review notes, submission | ✅ 1.0.0 (build 24) submitted 2026-11-15 |
-| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Not resubmitted: the store moved to the Swift app instead. |
+| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Not resubmitted: the store moved to the Swift app instead, and the vendored winit that fixed it was removed. |
 | 2.0.0 (Swift app) | ⏳ Build 33 submitted 2026-11-19, waiting for review. The App Store Connect version record that held 1.0.0 was renamed to 2.0.0 (an app with no release can only have one version in progress), and the 1.0.0 submission was cancelled. Listing, review notes and screenshots are in `appstore/` (`ios-release` skill: `asc.py status`). |
 
 ## 2.0.0: the native Swift app
@@ -59,9 +59,11 @@ App Review scans the binary's imported symbols and Objective-C selector names
 for private APIs before a human looks at it. Our own code uses none, but
 dependencies can: winit 0.30 calls CGS* window blur functions and
 undocumented `NSCursor` selectors. `scripts/check-private-apis.sh` does a
-similar scan, and `build-macos.sh` runs it on every build, before signing or
-uploading. When updating eframe/winit, keep the vendored winit patch (or drop
-it once winit is clean) and make sure the check still passes.
+similar scan. The Swift app's `archive.sh` and CI run it on every build. The
+Rust app used a vendored winit without those calls for the 1.0 store build;
+since the store gets the Swift app, the Rust app is back on upstream winit and
+`build-macos.sh` only runs the check for `--app-store` builds, which no longer
+pass it.
 
 Signing material lives in `~/.alocir-signing/` on the release Mac (never in
 the repo): private keys, certificates, `.p12` bundles and their password, and

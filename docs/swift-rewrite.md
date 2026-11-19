@@ -22,7 +22,7 @@ Swift app that:
 ### Not in scope
 
 - Windows and Linux. The Rust workspace stays as it is and keeps serving
-  them. Do not delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
+  them. Do not delete or restructure `crates/` or the Rust CI jobs.
 - Duplicate detection, usage trends, report export, a colour scheme editor.
 - Uploading to App Store Connect or submitting for review. The human does
   that. Never run an upload.

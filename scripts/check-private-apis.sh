@@ -121,6 +121,6 @@ done
 if [[ $status -ne 0 ]]; then
     echo ""
     echo "Private APIs found. App Review rejects these (guideline 2.5.1)."
-    echo "Most come from dependencies; see vendor/winit/ALOCIR.md for how winit was patched."
+    echo "Most come from dependencies, such as winit in the Rust app."
 fi
 exit $status
