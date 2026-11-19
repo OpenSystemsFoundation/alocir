@@ -1,4 +1,4 @@
-use eframe::egui::Rect;
+use eframe::egui::{Pos2, Rect};
 use eframe::emath::{pos2, vec2};
 
 pub struct TreemapItem {
@@ -144,6 +144,319 @@ fn layout_recursive(items: &[(usize, f64)], bounds: Rect, out: &mut Vec<TreemapI
         };
         items = &items[split_at..];
     }
+}
+
+/// One tile of a nested layout. Tiles are in depth-first order: a tile's
+/// descendants are exactly `index + 1 .. subtree_end`.
+#[derive(Clone, Copy, Debug)]
+pub struct Tile {
+    /// The tile's full cell; it is drawn shrunk by [`TILE_INSET`].
+    pub rect: Rect,
+    /// Index of this tile's node among its parent node's children.
+    pub child: u32,
+    /// Index of the enclosing tile, or -1 for children of the focused folder.
+    pub parent: i32,
+    /// One past the last descendant's index.
+    pub subtree_end: u32,
+    /// 0 for children of the focused folder, 1 for theirs, ...
+    pub depth: u8,
+    /// A directory drawn as a frame with a header and its children inside.
+    pub shows_children: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NestedOptions {
+    /// Levels of tiles drawn (1 = just the focused folder's children).
+    pub max_depth: usize,
+    /// Height of a nested folder's header strip, inside its frame.
+    pub header: f32,
+    /// Gap between a nested folder's frame and its children.
+    pub inset: f32,
+    /// A folder shows its children only when its cell is at least this big.
+    pub min_nested_width: f32,
+    pub min_nested_height: f32,
+}
+
+impl Default for NestedOptions {
+    fn default() -> Self {
+        NestedOptions {
+            max_depth: 4,
+            header: 18.0,
+            inset: 2.0,
+            min_nested_width: 56.0,
+            min_nested_height: 44.0,
+        }
+    }
+}
+
+/// Squarified, nested layout of `focus`'s children (sorted by size, as the
+/// scanner keeps them) in `bounds`. Folders big enough show their own
+/// children inside a frame, down to `max_depth` levels. Like
+/// [`layout_visible`], tiles under 1px are left out, and since children are
+/// sorted, a folder's layout stops at its first row thinner than that.
+pub fn layout_nested(
+    focus: &crate::scanner::FileNode,
+    bounds: Rect,
+    options: &NestedOptions,
+) -> Vec<Tile> {
+    let mut tiles = Vec::with_capacity(focus.children.len().min(1 << 16) * 2);
+    // One scratch buffer per depth, reused across folders.
+    let mut scratch: Vec<Vec<Rect>> = Vec::new();
+    nest(focus, bounds, 0, -1, options, &mut tiles, &mut scratch);
+    tiles
+}
+
+fn nest(
+    node: &crate::scanner::FileNode,
+    bounds: Rect,
+    depth: usize,
+    parent: i32,
+    options: &NestedOptions,
+    tiles: &mut Vec<Tile>,
+    scratch: &mut Vec<Vec<Rect>>,
+) {
+    if scratch.len() <= depth {
+        scratch.push(Vec::new());
+    }
+    let mut rects = std::mem::take(&mut scratch[depth]);
+    rects.clear();
+    squarify_children(&node.children, bounds, &mut rects);
+
+    for (i, &rect) in rects.iter().enumerate() {
+        let frame = rect.shrink(TILE_INSET);
+        if frame.width() < 1.0 || frame.height() < 1.0 {
+            continue;
+        }
+        let child = &node.children[i];
+        let index = tiles.len();
+        let nests = child.is_dir
+            && !child.children.is_empty()
+            && depth + 1 < options.max_depth
+            && rect.width() >= options.min_nested_width
+            && rect.height() >= options.min_nested_height;
+        tiles.push(Tile {
+            rect,
+            child: i as u32,
+            parent,
+            subtree_end: index as u32 + 1,
+            depth: depth.min(u8::MAX as usize) as u8,
+            shows_children: nests,
+        });
+        if nests {
+            let inner = Rect::from_min_max(
+                pos2(frame.min.x + options.inset, frame.min.y + options.header),
+                pos2(frame.max.x - options.inset, frame.max.y - options.inset),
+            );
+            if inner.width() >= 1.0 && inner.height() >= 1.0 {
+                nest(
+                    child,
+                    inner,
+                    depth + 1,
+                    index as i32,
+                    options,
+                    tiles,
+                    scratch,
+                );
+            }
+            tiles[index].subtree_end = tiles.len() as u32;
+        }
+    }
+    scratch[depth] = rects;
+}
+
+/// Squarified rects for `children` (sorted largest first), one per child in
+/// order, stopping at the first zero size or the first row thinner than 1px
+/// (nothing after it could be drawn).
+fn squarify_children(children: &[crate::scanner::FileNode], bounds: Rect, out: &mut Vec<Rect>) {
+    let count = children.iter().take_while(|c| c.size > 0).count();
+    let total: f64 = children[..count].iter().map(|c| c.size as f64).sum();
+    if count == 0 || total <= 0.0 || bounds.width() <= 0.0 || bounds.height() <= 0.0 {
+        return;
+    }
+    let scale = bounds.width() as f64 * bounds.height() as f64 / total;
+    let area = |i: usize| children[i].size as f64 * scale;
+    let (mut x, mut y) = (bounds.min.x as f64, bounds.min.y as f64);
+    let (mut w, mut h) = (bounds.width() as f64, bounds.height() as f64);
+    let mut start = 0;
+    while start < count && w > 0.0 && h > 0.0 {
+        if start == count - 1 {
+            out.push(Rect::from_min_size(
+                pos2(x as f32, y as f32),
+                vec2(w as f32, h as f32),
+            ));
+            break;
+        }
+        let horizontal = w >= h;
+        let side = if horizontal { h } else { w };
+        let max_area = area(start);
+        let mut row_sum = 0.0;
+        let mut best = f64::MAX;
+        let mut end = start;
+        while end < count {
+            let a = area(end);
+            let sum = row_sum + a;
+            let worst = worst_ratio_from_extremes(max_area, a, sum, side);
+            if worst <= best {
+                best = worst;
+                row_sum = sum;
+                end += 1;
+            } else {
+                break;
+            }
+        }
+        let thickness = row_sum / side;
+        if thickness < 1.0 {
+            break;
+        }
+        let mut offset = 0.0;
+        for i in start..end {
+            let length = area(i) / thickness;
+            out.push(if horizontal {
+                Rect::from_min_size(
+                    pos2(x as f32, (y + offset) as f32),
+                    vec2(thickness as f32, length as f32),
+                )
+            } else {
+                Rect::from_min_size(
+                    pos2((x + offset) as f32, y as f32),
+                    vec2(length as f32, thickness as f32),
+                )
+            });
+            offset += length;
+        }
+        if horizontal {
+            x += thickness;
+            w -= thickness;
+        } else {
+            y += thickness;
+            h -= thickness;
+        }
+        start = end;
+    }
+}
+
+/// The node of every tile, in tile order: one pass, since each tile's
+/// parent comes before it.
+pub fn tile_nodes<'a>(
+    tiles: &[Tile],
+    focus: &'a crate::scanner::FileNode,
+) -> Vec<&'a crate::scanner::FileNode> {
+    let mut nodes: Vec<&crate::scanner::FileNode> = Vec::with_capacity(tiles.len());
+    for tile in tiles {
+        let parent = if tile.parent < 0 {
+            focus
+        } else {
+            nodes[tile.parent as usize]
+        };
+        nodes.push(&parent.children[tile.child as usize]);
+    }
+    nodes
+}
+
+/// Child indices leading from the focused folder to tile `index`.
+pub fn tile_path(tiles: &[Tile], index: usize) -> Vec<usize> {
+    let mut path = Vec::new();
+    let mut current = index as i32;
+    while current >= 0 {
+        let tile = &tiles[current as usize];
+        path.push(tile.child as usize);
+        current = tile.parent;
+    }
+    path.reverse();
+    path
+}
+
+/// The deepest tile containing `point`, or `None`.
+pub fn hit_test(tiles: &[Tile], point: Pos2) -> Option<usize> {
+    let mut found = None;
+    let mut i = 0;
+    let mut end = tiles.len();
+    while i < end {
+        let tile = &tiles[i];
+        if contains(tile.rect, point) {
+            found = Some(i);
+            end = tile.subtree_end as usize;
+            i += 1;
+        } else {
+            i = tile.subtree_end as usize;
+        }
+    }
+    found
+}
+
+fn contains(rect: Rect, p: Pos2) -> bool {
+    p.x >= rect.min.x && p.x < rect.max.x && p.y >= rect.min.y && p.y < rect.max.y
+}
+
+fn is_ancestor(tiles: &[Tile], ancestor: usize, index: usize) -> bool {
+    let mut current = index as i32;
+    while current >= 0 {
+        if current as usize == ancestor {
+            return true;
+        }
+        current = tiles[current as usize].parent;
+    }
+    false
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+/// The tile an arrow key moves the selection to: probe just past the
+/// selected tile's edge, take the tile there at the selection's depth, and
+/// keep going while that is the selection or one of its ancestors (a header
+/// strip or gap). Crossing another folder's frame looks for a tile at the
+/// same depth inside it. `None` at the edge of the map.
+pub fn move_selection(
+    tiles: &[Tile],
+    bounds: Rect,
+    index: usize,
+    direction: Direction,
+) -> Option<usize> {
+    let tile = tiles[index];
+    let r = tile.rect;
+    let (mut probe, step) = match direction {
+        Direction::Left => (pos2(r.min.x - 0.5, r.center().y), vec2(-1.0, 0.0)),
+        Direction::Right => (pos2(r.max.x + 0.5, r.center().y), vec2(1.0, 0.0)),
+        Direction::Up => (pos2(r.center().x, r.min.y - 0.5), vec2(0.0, -1.0)),
+        Direction::Down => (pos2(r.center().x, r.max.y + 0.5), vec2(0.0, 1.0)),
+    };
+    // A shallower folder frame crossed on the way, used if no tile at the
+    // selection's depth turns up beyond it.
+    let mut fallback: Option<usize> = None;
+    while contains(bounds, probe) {
+        if let Some(mut hit) = hit_test(tiles, probe) {
+            while tiles[hit].depth > tile.depth && tiles[hit].parent >= 0 {
+                hit = tiles[hit].parent as usize;
+            }
+            if !is_ancestor(tiles, hit, index) {
+                if let Some(candidate) = fallback {
+                    if !is_ancestor(tiles, candidate, hit) {
+                        // Left that folder without finding anything inside.
+                        return Some(candidate);
+                    }
+                }
+                if tiles[hit].depth == tile.depth || !tiles[hit].shows_children {
+                    return Some(hit);
+                }
+                // The header or frame of another folder: look inside it.
+                if fallback.is_none() {
+                    fallback = Some(hit);
+                }
+            } else if let Some(candidate) = fallback {
+                return Some(candidate);
+            }
+        } else if let Some(candidate) = fallback {
+            return Some(candidate);
+        }
+        probe += step;
+    }
+    fallback
 }
 
 /// Compute the worst (maximum) aspect ratio among items in a row.
@@ -307,6 +620,123 @@ mod tests {
             .map(|item| (item.rect.width() as f64) * (item.rect.height() as f64))
             .sum();
         assert!((total_area - 1600.0 * 1000.0).abs() < 1.0);
+    }
+
+    fn file(name: &str, size: u64) -> crate::scanner::FileNode {
+        crate::scanner::FileNode::new(name.into(), size, Vec::new(), false)
+    }
+
+    fn dir(name: &str, children: Vec<crate::scanner::FileNode>) -> crate::scanner::FileNode {
+        let size = children.iter().map(|c| c.size).sum();
+        crate::scanner::FileNode::new(name.into(), size, children, true)
+    }
+
+    fn nested_tree() -> crate::scanner::FileNode {
+        dir(
+            "root",
+            vec![
+                dir(
+                    "big",
+                    vec![
+                        file("a", 400),
+                        file("b", 200),
+                        dir("inner", vec![file("c", 100)]),
+                    ],
+                ),
+                file("d", 200),
+                file("e", 100),
+            ],
+        )
+    }
+
+    #[test]
+    fn nested_layout_is_depth_first_with_subtree_ranges() {
+        let root = nested_tree();
+        let bounds = make_bounds(0.0, 0.0, 800.0, 600.0);
+        let tiles = layout_nested(&root, bounds, &NestedOptions::default());
+        let nodes = tile_nodes(&tiles, &root);
+        let names: Vec<&str> = nodes.iter().map(|n| n.name.as_str()).collect();
+        assert_eq!(names, ["big", "a", "b", "inner", "c", "d", "e"]);
+        assert!(tiles[0].shows_children);
+        assert_eq!(tiles[0].subtree_end, 5);
+        assert_eq!(tiles[3].parent, 0);
+        assert_eq!(tiles[4].depth, 2);
+        assert_eq!(tile_path(&tiles, 4), vec![0, 2, 0]);
+        // Children sit inside their folder's frame, below its header.
+        let frame = tiles[0].rect.shrink(TILE_INSET);
+        for t in &tiles[1..5] {
+            assert!(t.rect.min.y >= frame.min.y + NestedOptions::default().header - 0.01);
+            assert!(frame.expand(0.01).contains_rect(t.rect));
+        }
+    }
+
+    #[test]
+    fn depth_one_is_flat() {
+        let root = nested_tree();
+        let options = NestedOptions {
+            max_depth: 1,
+            ..NestedOptions::default()
+        };
+        let tiles = layout_nested(&root, make_bounds(0.0, 0.0, 800.0, 600.0), &options);
+        assert_eq!(tiles.len(), 3);
+        assert!(tiles.iter().all(|t| !t.shows_children && t.depth == 0));
+    }
+
+    #[test]
+    fn hit_test_finds_the_deepest_tile() {
+        let root = nested_tree();
+        let tiles = layout_nested(
+            &root,
+            make_bounds(0.0, 0.0, 800.0, 600.0),
+            &NestedOptions::default(),
+        );
+        // Inside "c", nested in "inner" in "big".
+        let c = tiles[4].rect.center();
+        assert_eq!(hit_test(&tiles, c), Some(4));
+        // On "big"'s header strip: the folder itself.
+        let header = pos2(tiles[0].rect.center().x, tiles[0].rect.min.y + 8.0);
+        assert_eq!(hit_test(&tiles, header), Some(0));
+        assert_eq!(hit_test(&tiles, pos2(-5.0, 5.0)), None);
+    }
+
+    #[test]
+    fn arrows_move_between_neighbours_at_the_same_depth() {
+        let root = nested_tree();
+        let bounds = make_bounds(0.0, 0.0, 800.0, 600.0);
+        let tiles = layout_nested(&root, bounds, &NestedOptions::default());
+        let names: Vec<&str> = tile_nodes(&tiles, &root)
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        // From each top-level tile, every move lands on another top-level
+        // tile or nowhere; it never stays put.
+        for i in [0usize, 5, 6] {
+            for d in [
+                Direction::Left,
+                Direction::Right,
+                Direction::Up,
+                Direction::Down,
+            ] {
+                if let Some(j) = move_selection(&tiles, bounds, i, d) {
+                    assert_ne!(j, i, "{} {d:?}", names[i]);
+                    assert_eq!(tiles[j].depth, 0, "{} {d:?} -> {}", names[i], names[j]);
+                }
+            }
+        }
+        // Inside a folder, moves reach the folder's other children.
+        let a = 1;
+        let reachable: Vec<usize> = [
+            Direction::Left,
+            Direction::Right,
+            Direction::Up,
+            Direction::Down,
+        ]
+        .into_iter()
+        .filter_map(|d| move_selection(&tiles, bounds, a, d))
+        .collect();
+        assert!(reachable
+            .iter()
+            .any(|&j| names[j] == "b" || names[j] == "inner"));
     }
 
     #[test]

@@ -1,3 +1,4 @@
+mod inspector;
 mod views;
 
 use eframe::egui;
@@ -7,8 +8,43 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::Arc;
 
+use alocir_shared::kind::FileKind;
 use alocir_shared::scanner::{FileNode, ScanProgress};
+use alocir_shared::search::{self, SearchQuery, SearchResult};
 use alocir_shared::settings::{show_settings_window, SettingsState};
+use alocir_shared::summary::{self, FolderSummary};
+use alocir_shared::treemap::{NestedOptions, Tile};
+
+/// Most search results listed in the inspector (all are marked on the map).
+const SEARCH_LIST_LIMIT: usize = 200;
+/// Largest files listed in the inspector.
+const LARGEST_FILES: usize = 20;
+/// Wait this long after the last keystroke before searching.
+const SEARCH_DEBOUNCE: std::time::Duration = std::time::Duration::from_millis(150);
+
+/// The nested layout of the folder on screen, kept until something it
+/// depends on changes (the tree, the folder, the map's size or the depth).
+struct LayoutCache {
+    key: (u64, Vec<usize>, [u32; 4], usize),
+    tiles: Vec<Tile>,
+    /// Dominant file kind of the focused folder and the folders below it,
+    /// by node address (see `summary::dominant_kinds`).
+    kinds: HashMap<usize, FileKind>,
+}
+
+/// What the search field is doing.
+#[derive(Default)]
+struct SearchState {
+    text: String,
+    /// The query that was last run, and the tree version it ran on.
+    ran: Option<(SearchQuery, u64)>,
+    /// When the text last changed, so searching waits for typing to pause.
+    edited: Option<std::time::Instant>,
+    result: Option<SearchResult>,
+    count: usize,
+    /// Put the keyboard focus in the field on the next frame.
+    focus: bool,
+}
 
 struct RenameState {
     path: PathBuf,
@@ -33,9 +69,11 @@ pub struct TreemapApp {
     settings: SettingsState,
     /// When the scan in progress started, for the elapsed-time display.
     scan_started: std::time::Instant,
-    /// Index (in the current node's children) of the tile under the pointer
-    /// last frame, shown in the status bar.
-    hovered: Option<usize>,
+    /// Child indices below the folder on screen of the tile under the
+    /// pointer last frame, shown in the status bar.
+    hovered: Option<Vec<usize>>,
+    /// The item whose right-click menu is open, by names from the root.
+    menu_target: Option<Vec<String>>,
     /// An error to show in the status bar for a few seconds.
     notice: Option<(String, std::time::Instant)>,
     // Filesystem watcher for live updates
@@ -58,6 +96,17 @@ pub struct TreemapApp {
     /// Directories being scanned in the background (keyed by path under
     /// `scan_path`), and whether they changed again since their scan started.
     pending_scans: HashMap<PathBuf, bool>,
+    /// Bumped whenever the tree changes; caches compare against it.
+    version: u64,
+    /// The selected item, by names from the scan root.
+    selection: Option<Vec<String>>,
+    search: SearchState,
+    layout: Option<LayoutCache>,
+    /// Summary of the focused folder, for the inspector.
+    summary: Option<((u64, Vec<usize>), FolderSummary)>,
+    /// A finished scan of the whole folder (path, size), for the recent
+    /// folders list; taken by the window.
+    finished_scan: Option<(PathBuf, u64)>,
 }
 
 impl TreemapApp {
@@ -92,6 +141,7 @@ impl TreemapApp {
             settings,
             scan_started: std::time::Instant::now(),
             hovered: None,
+            menu_target: None,
             notice: None,
             _watcher: None,
             watch_rx: None,
@@ -102,6 +152,12 @@ impl TreemapApp {
             dir_scan_tx,
             dir_scan_rx,
             pending_scans: HashMap::new(),
+            version: 0,
+            selection: None,
+            search: SearchState::default(),
+            layout: None,
+            summary: None,
+            finished_scan: None,
         }
     }
 
@@ -407,27 +463,22 @@ impl TreemapApp {
                 if !known {
                     // Show it right away, then fill in its real size from a
                     // full scan off the UI thread.
-                    let placeholder = FileNode {
-                        name: name.clone(),
-                        size: 0,
-                        children: Vec::new(),
-                        is_dir: true,
-                    };
+                    let placeholder = FileNode::new(name.clone(), 0, Vec::new(), true);
                     self.update_child(parents, name, Some(placeholder));
                     self.scan_dir_in_background(path, ctx);
                 }
             }
             Ok(m) => {
-                let file = FileNode {
-                    name: name.clone(),
-                    size: if m.is_file() {
+                let file = FileNode::new(
+                    name.clone(),
+                    if m.is_file() {
                         alocir_shared::scanner::disk_usage(&m)
                     } else {
                         0
                     },
-                    children: Vec::new(),
-                    is_dir: false,
-                };
+                    Vec::new(),
+                    false,
+                );
                 self.update_child(parents, name, Some(file));
             }
         }
@@ -499,6 +550,7 @@ impl TreemapApp {
                     node.name = std::mem::take(&mut root.name);
                     *root = node;
                     self.nav_stack = Self::restore_nav(root, &nav);
+                    self.version += 1;
                 }
             }
             Some((name, parents)) => self.update_child(parents, name, Some(node)),
@@ -518,13 +570,8 @@ impl TreemapApp {
         };
         if replace_child(root, parents, name, new).is_some() {
             self.nav_stack = Self::restore_nav(root, &nav);
+            self.version += 1;
         }
-    }
-
-    /// Remove a child of the current node by name, updating ancestor sizes.
-    fn remove_child(&mut self, name: &str) {
-        let parents = self.nav_names();
-        self.update_child(&parents, name, None);
     }
 
     fn trigger_rescan(&mut self, ctx: &egui::Context) {
@@ -541,12 +588,175 @@ impl TreemapApp {
         );
     }
 
-    fn do_trash(&mut self, path: PathBuf, _ctx: &egui::Context) {
+    pub fn settings_mut(&mut self) -> &mut SettingsState {
+        &mut self.settings
+    }
+
+    /// The folder scanned and its size, once per finished full scan.
+    pub fn take_finished_scan(&mut self) -> Option<(PathBuf, u64)> {
+        self.finished_scan.take()
+    }
+
+    /// The node at `names` below the root (a file or a folder).
+    fn node_at_names(&self, names: &[String]) -> Option<&FileNode> {
+        let mut node = self.root.as_ref()?;
+        for name in names {
+            node = node.children.iter().find(|c| &c.name == name)?;
+        }
+        Some(node)
+    }
+
+    /// Names from the root to the node at child-index `path` below it.
+    fn names_for_indices(&self, path: &[u32]) -> Option<Vec<String>> {
+        let mut node = self.root.as_ref()?;
+        let mut names = Vec::with_capacity(path.len());
+        for &i in path {
+            node = node.children.get(i as usize)?;
+            names.push(node.name.clone());
+        }
+        Some(names)
+    }
+
+    fn selected_node(&self) -> Option<&FileNode> {
+        self.node_at_names(self.selection.as_deref()?)
+    }
+
+    /// Drop a selection whose item is gone.
+    fn validate_selection(&mut self) {
+        if self
+            .selection
+            .as_ref()
+            .is_some_and(|names| self.node_at_names(names).is_none())
+        {
+            self.selection = None;
+        }
+    }
+
+    /// Show the folder containing the item at `names` and select the item.
+    fn reveal(&mut self, names: Vec<String>) {
+        let Some(root) = &self.root else {
+            return;
+        };
+        let parent = &names[..names.len().saturating_sub(1)];
+        self.nav_stack = Self::restore_nav(root, parent);
+        self.selection = (!names.is_empty()).then_some(names);
+    }
+
+    /// Zoom into the folder at `names` (no-op for files).
+    fn zoom_into(&mut self, names: &[String]) {
+        if !self.node_at_names(names).is_some_and(|n| n.is_dir) {
+            return;
+        }
+        if let Some(root) = &self.root {
+            self.nav_stack = Self::restore_nav(root, names);
+            self.selection = None;
+            self.hovered = None;
+        }
+    }
+
+    /// Up one folder, selecting the folder we came from.
+    fn zoom_out(&mut self) {
+        let names = self.nav_names();
+        if self.nav_stack.pop().is_some() {
+            self.selection = Some(names);
+            self.hovered = None;
+        }
+    }
+
+    /// The nested layout for the folder on screen in `bounds`, computed
+    /// only when something it depends on has changed.
+    fn refresh_layout(&mut self, bounds: egui::Rect) {
+        let depth = self.settings.nesting_depth.max(1);
+        let rounded = [
+            bounds.min.x.round() as u32,
+            bounds.min.y.round() as u32,
+            bounds.width().round() as u32,
+            bounds.height().round() as u32,
+        ];
+        let key = (self.version, self.nav_stack.clone(), rounded, depth);
+        if self.layout.as_ref().is_some_and(|l| l.key == key) {
+            return;
+        }
+        let Some(focus) = self.current_node() else {
+            self.layout = None;
+            return;
+        };
+        let options = NestedOptions {
+            max_depth: depth,
+            ..NestedOptions::default()
+        };
+        let tiles = alocir_shared::treemap::layout_nested(focus, bounds, &options);
+        let kinds = summary::dominant_kinds(focus, depth);
+        self.layout = Some(LayoutCache { key, tiles, kinds });
+    }
+
+    /// The summary of the folder on screen, for the inspector.
+    fn refresh_summary(&mut self) {
+        let key = (self.version, self.nav_stack.clone());
+        if self.summary.as_ref().is_some_and(|(k, _)| *k == key) {
+            return;
+        }
+        let Some(focus) = self.current_node() else {
+            self.summary = None;
+            return;
+        };
+        let summary = FolderSummary::of(focus, LARGEST_FILES);
+        self.summary = Some((key, summary));
+    }
+
+    /// The search field's text changed.
+    fn search_edited(&mut self) {
+        self.search.edited = Some(std::time::Instant::now());
+    }
+
+    /// Run the search once typing pauses, and again when the tree changes.
+    fn refresh_search(&mut self, ctx: &egui::Context) {
+        let query = SearchQuery::parse(&self.search.text);
+        if let Some(edited) = self.search.edited {
+            let waited = edited.elapsed();
+            if waited < SEARCH_DEBOUNCE {
+                ctx.request_repaint_after(SEARCH_DEBOUNCE - waited);
+                return;
+            }
+            self.search.edited = None;
+        }
+        let Some(query) = query else {
+            if self.search.ran.take().is_some() {
+                if let Some(root) = &mut self.root {
+                    search::clear_marks(root);
+                }
+                self.search.result = None;
+                self.search.count = 0;
+            }
+            return;
+        };
+        if self
+            .search
+            .ran
+            .as_ref()
+            .is_some_and(|(q, v)| *q == query && *v == self.version)
+        {
+            return;
+        }
+        let Some(root) = &mut self.root else {
+            return;
+        };
+        let (result, count) = search::search(root, &query, SEARCH_LIST_LIMIT);
+        self.search.result = Some(result);
+        self.search.count = count;
+        self.search.ran = Some((query, self.version));
+    }
+
+    fn search_active(&self) -> bool {
+        self.search.ran.is_some()
+    }
+
+    fn do_trash(&mut self, path: PathBuf, ctx: &egui::Context) {
         match move_to_trash(&path) {
             Ok(()) => {
-                if let Some(name) = path.file_name() {
-                    self.remove_child(&name.to_string_lossy());
-                }
+                // The item can be anywhere below the folder on screen.
+                self.reconcile_path(&path, ctx);
+                self.validate_selection();
             }
             Err(e) => {
                 eprintln!("Move to trash failed: {}", e);
@@ -569,10 +779,14 @@ impl eframe::App for TreemapApp {
                 self.root = self.scan_progress.result.lock().unwrap().take();
                 self.scan_duration = self.scan_progress.duration.lock().unwrap().take();
                 self.scanning = false;
+                self.version += 1;
                 if let Some(names) = self.saved_nav_names.take() {
                     if let Some(root) = &self.root {
                         self.nav_stack = Self::restore_nav(root, &names);
                     }
+                }
+                if let Some(root) = &self.root {
+                    self.finished_scan = Some((self.scan_path.clone(), root.size));
                 }
                 self.ensure_watching(ctx);
             }
@@ -582,6 +796,7 @@ impl eframe::App for TreemapApp {
             self.show_scanning_ui(ctx);
         } else {
             self.process_watch_events(ctx);
+            self.refresh_search(ctx);
             self.show_treemap_ui(ctx);
             self.show_rename_dialog(ctx);
             show_settings_window(ctx, &mut self.settings);

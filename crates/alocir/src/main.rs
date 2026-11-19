@@ -1,4 +1,5 @@
 mod app;
+mod store;
 mod ui;
 
 use alocir_shared::glyphs;
@@ -8,6 +9,8 @@ use eframe::egui::{self, RichText};
 use std::collections::HashSet;
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
+use store::{Prefs, Recents};
 
 const USAGE: &str = "\
 Alocir - disk space visualizer
@@ -81,6 +84,17 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> CliOutcome {
     CliOutcome::Run(cli)
 }
 
+/// The disk the system runs from: `/`, or the system drive on Windows.
+#[cfg(not(feature = "app-store"))]
+fn startup_disk() -> PathBuf {
+    if cfg!(target_os = "windows") {
+        let drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
+        PathBuf::from(format!("{drive}\\"))
+    } else {
+        PathBuf::from("/")
+    }
+}
+
 /// The user's home folder, if the environment says where it is.
 #[cfg(not(feature = "app-store"))]
 fn home_dir() -> Option<PathBuf> {
@@ -109,10 +123,22 @@ struct AlocirApp {
     initial_folder: Option<PathBuf>,
     /// A problem to show on the start screen, e.g. a bad folder argument.
     error: Option<String>,
+    /// Where settings and recent folders are kept, if there is such a place.
+    config_dir: Option<PathBuf>,
+    recents: Recents,
+    /// What was last written to (or read from) the settings file.
+    saved_prefs: Prefs,
+    /// The window's inner size, and when it last changed: it is saved once
+    /// resizing has stopped for a moment.
+    window_size: Option<[f32; 2]>,
+    resized_at: Option<Instant>,
 }
 
+/// How long the window size must stay put before it is saved.
+const RESIZE_SETTLE: Duration = Duration::from_millis(600);
+
 impl AlocirApp {
-    fn new(cli: Cli) -> Self {
+    fn new(cli: Cli, config_dir: Option<PathBuf>, prefs: Prefs) -> Self {
         let mut error = None;
         let initial_folder = cli.folder.and_then(|folder| {
             // Resolve "." and friends so the folder has a real name to show.
@@ -124,11 +150,26 @@ impl AlocirApp {
                 }
             }
         });
+        let mut settings = SettingsState::new();
+        prefs.apply_to(&mut settings);
+        // A theme on the command line is for this run; it is saved only if
+        // a setting is changed later.
+        let mut saved_prefs = prefs.clone();
+        if let Some(scheme) = cli.scheme {
+            settings.scheme = scheme;
+            saved_prefs.scheme = scheme;
+        }
+        let recents = config_dir.as_deref().map(Recents::load).unwrap_or_default();
         AlocirApp {
             state: AppState::Start,
-            settings: SettingsState::with_scheme(cli.scheme.unwrap_or(ColorScheme::DarkMode)),
+            settings,
             initial_folder,
             error,
+            config_dir,
+            recents,
+            window_size: prefs.window,
+            saved_prefs,
+            resized_at: None,
         }
     }
 
@@ -174,7 +215,8 @@ impl AlocirApp {
                 );
             }
 
-            ui::centered_block(ui, egui::vec2(460.0, 400.0), |ui| {
+            let height = 400.0 + 44.0 * self.recents.entries.len().min(6) as f32;
+            ui::centered_block(ui, egui::vec2(460.0, height), |ui| {
                 let (logo, _) =
                     ui.allocate_exact_size(egui::vec2(76.0, 76.0), egui::Sense::hover());
                 ui::paint_logo(ui.painter(), logo, scheme);
@@ -205,17 +247,40 @@ impl AlocirApp {
 
                 // The sandboxed store build can only read folders picked in the dialog.
                 #[cfg(not(feature = "app-store"))]
-                if let Some(home) = home_dir() {
-                    ui.add_space(4.0);
-                    if ui
-                        .add(
-                            egui::Button::new("Scan Home Folder").min_size(egui::vec2(240.0, 32.0)),
-                        )
-                        .on_hover_text(home.to_string_lossy())
-                        .clicked()
-                    {
-                        chosen = Some(home);
-                    }
+                {
+                    ui.add_space(6.0);
+                    let disk = startup_disk();
+                    let row_w = 240.0;
+                    ui.allocate_ui_with_layout(
+                        egui::vec2(row_w, 32.0),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            let half =
+                                egui::vec2((row_w - ui.spacing().item_spacing.x) / 2.0, 32.0);
+                            if let Some(home) = home_dir() {
+                                if ui
+                                    .add(
+                                        egui::Button::new(format!("{}  Home", glyphs::HOME))
+                                            .min_size(half),
+                                    )
+                                    .on_hover_text(format!("Scan {}", home.display()))
+                                    .clicked()
+                                {
+                                    chosen = Some(home);
+                                }
+                            }
+                            if ui
+                                .add(
+                                    egui::Button::new(format!("{}  Startup Disk", glyphs::DISK))
+                                        .min_size(half),
+                                )
+                                .on_hover_text(format!("Scan {}", disk.display()))
+                                .clicked()
+                            {
+                                chosen = Some(disk.clone());
+                            }
+                        },
+                    );
                 }
 
                 // winit delivers file drops on macOS, Windows and X11 only.
@@ -231,6 +296,25 @@ impl AlocirApp {
                 if let Some(error) = &self.error {
                     ui.add_space(12.0);
                     ui.colored_label(palette.danger, format!("{}  {error}", glyphs::WARNING));
+                }
+
+                if !self.recents.entries.is_empty() {
+                    ui.add_space(22.0);
+                    if let Some(pick) = recent_list(ui, &self.recents, palette) {
+                        match pick {
+                            RecentPick::Open(path) if path.is_dir() => chosen = Some(path),
+                            RecentPick::Open(path) => {
+                                self.error =
+                                    Some(format!("\"{}\" is no longer there.", path.display()));
+                                self.recents.remove(&path);
+                                self.save_recents();
+                            }
+                            RecentPick::Remove(path) => {
+                                self.recents.remove(&path);
+                                self.save_recents();
+                            }
+                        }
+                    }
                 }
 
                 if cfg!(feature = "app-store") {
@@ -274,8 +358,163 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
     path
 }
 
+impl AlocirApp {
+    fn save_recents(&self) {
+        if let Some(dir) = &self.config_dir {
+            let _ = self.recents.save(dir);
+        }
+    }
+
+    /// Keep the recent folders and saved settings up to date. Runs every
+    /// frame; writes only when something changed.
+    fn persist(&mut self, ctx: &egui::Context) {
+        if let AppState::Scanning(app) = &mut self.state {
+            if let Some((path, size)) = app.take_finished_scan() {
+                self.recents.add(path, size);
+                self.save_recents();
+            }
+        }
+        let settings = match &mut self.state {
+            AppState::Start => &mut self.settings,
+            AppState::Scanning(app) => app.settings_mut(),
+        };
+        settings.recent_count = self.recents.entries.len();
+        if std::mem::take(&mut settings.clear_recents) {
+            self.recents.entries.clear();
+            settings.recent_count = 0;
+            if let Some(dir) = &self.config_dir {
+                let _ = self.recents.save(dir);
+            }
+        }
+
+        // The window size, once resizing settles (not while maximized or
+        // full screen, which would come back as the normal size).
+        let (size, special) = ctx.input(|i| {
+            let v = i.viewport();
+            (
+                v.inner_rect
+                    .map(|r| [r.width().round(), r.height().round()]),
+                v.maximized.unwrap_or(false) || v.fullscreen.unwrap_or(false),
+            )
+        });
+        if let Some(size) = size.filter(|_| !special) {
+            if self.window_size != Some(size) {
+                self.window_size = Some(size);
+                self.resized_at = Some(Instant::now());
+            }
+        }
+        if let Some(at) = self.resized_at {
+            if at.elapsed() < RESIZE_SETTLE {
+                ctx.request_repaint_after(RESIZE_SETTLE - at.elapsed());
+                return;
+            }
+            self.resized_at = None;
+        }
+        let prefs = Prefs::from_settings(settings, self.window_size);
+        if prefs != self.saved_prefs {
+            if let Some(dir) = &self.config_dir {
+                let _ = prefs.save(dir);
+            }
+            self.saved_prefs = prefs;
+        }
+    }
+}
+
+enum RecentPick {
+    Open(PathBuf),
+    Remove(PathBuf),
+}
+
+/// The recent folders on the start screen: name, path, size and when.
+/// Right-click one to remove it.
+fn recent_list(
+    ui: &mut egui::Ui,
+    recents: &Recents,
+    palette: alocir_shared::theme::UiPalette,
+) -> Option<RecentPick> {
+    let mut pick = None;
+    ui.label(
+        RichText::new("Recent")
+            .small()
+            .strong()
+            .color(palette.text_weak),
+    );
+    ui.add_space(2.0);
+    let now = store::now();
+    for entry in recents.entries.iter().take(6) {
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(380.0, 40.0), egui::Sense::click());
+        let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
+        let painter = ui.painter();
+        let fill = if response.hovered() {
+            palette.surface_hover
+        } else {
+            palette.surface
+        };
+        painter.rect_filled(rect, egui::CornerRadius::same(palette.radius), fill);
+        let name = entry
+            .path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| entry.path.display().to_string());
+        let glyph = if entry.path.parent().is_none() {
+            glyphs::DISK
+        } else {
+            glyphs::FOLDER
+        };
+        painter.text(
+            rect.left_center() + egui::vec2(12.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            glyph,
+            egui::FontId::proportional(16.0),
+            palette.accent,
+        );
+        let left = rect.left() + 38.0;
+        painter.text(
+            egui::pos2(left, rect.top() + 12.0),
+            egui::Align2::LEFT_CENTER,
+            alocir_shared::text::truncate_end(&name, 30),
+            egui::FontId::proportional(14.0),
+            palette.text,
+        );
+        painter.text(
+            egui::pos2(left, rect.bottom() - 11.0),
+            egui::Align2::LEFT_CENTER,
+            alocir_shared::text::truncate_start(&entry.path.display().to_string(), 36),
+            egui::FontId::proportional(11.0),
+            palette.text_weak,
+        );
+        painter.text(
+            egui::pos2(rect.right() - 12.0, rect.top() + 12.0),
+            egui::Align2::RIGHT_CENTER,
+            alocir_shared::scanner::format_size(entry.size),
+            egui::FontId::proportional(13.0),
+            palette.text,
+        );
+        painter.text(
+            egui::pos2(rect.right() - 12.0, rect.bottom() - 11.0),
+            egui::Align2::RIGHT_CENTER,
+            store::time_ago(entry.scanned, now),
+            egui::FontId::proportional(11.0),
+            palette.text_weak,
+        );
+        if response.clicked() {
+            pick = Some(RecentPick::Open(entry.path.clone()));
+        }
+        response.context_menu(|ui| {
+            if ui.button("Remove from Recents").clicked() {
+                pick = Some(RecentPick::Remove(entry.path.clone()));
+                ui.close_menu();
+            }
+        });
+        ui.add_space(4.0);
+    }
+    pick
+}
+
 impl eframe::App for AlocirApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        self.persist(ctx);
         match &mut self.state {
             AppState::Start => {
                 self.settings.apply_theme(ctx);
@@ -289,6 +528,7 @@ impl eframe::App for AlocirApp {
                         path.display()
                     )));
                     let mut settings = std::mem::take(&mut self.settings);
+                    self.error = None;
                     settings.open = false;
                     self.state = AppState::Scanning(app::TreemapApp::new(
                         path,
@@ -317,9 +557,14 @@ fn main() -> eframe::Result<()> {
         }
     };
 
+    let config_dir = store::config_dir();
+    let prefs = config_dir
+        .as_deref()
+        .map(Prefs::load)
+        .unwrap_or_else(|| Prefs::from_settings(&SettingsState::new(), None));
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1200.0, 800.0])
+            .with_inner_size(prefs.window.unwrap_or([1200.0, 800.0]))
             .with_min_inner_size([480.0, 320.0])
             .with_title("Alocir")
             .with_icon(std::sync::Arc::new(alocir_shared::icon::app_icon())),
@@ -329,7 +574,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Alocir",
         options,
-        Box::new(|_cc| Ok(Box::new(AlocirApp::new(cli)))),
+        Box::new(|_cc| Ok(Box::new(AlocirApp::new(cli, config_dir, prefs)))),
     )
 }
 

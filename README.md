@@ -42,20 +42,18 @@ through the App Store.
 
 Both editions:
 
-- **Interactive treemap** with drill-down navigation and a path bar to go back
+- **Nested treemap** — subfolders drawn inside their folders, one to eight levels deep, coloured by kind of file
 - **Real disk usage** — Sizes are the space files occupy on disk (allocated blocks), so sparse files don't inflate totals, hard-linked files are counted once, and a folder reachable through two paths (such as macOS's `/Users` and `/System/Volumes/Data/Users`) is counted once when you scan the whole disk. On Windows, sizes are file lengths.
 - **Parallel scanning** on every core
 - **Live updates** — Files created, changed, renamed, moved or deleted while you look are reflected without a rescan
-- **File operations** from the right-click menu: open, show in the file manager, copy path, rename, move to trash
-
-Alocir for Mac also has:
-
-- **Nested treemap** — subfolders drawn inside their folders, one to eight levels deep
 - **Search** by name, extension (`.mov`) or size (`>100mb`), with matches highlighted on the map
 - **Inspector** with the selected item's size, what kinds of files fill a folder, and its largest files
-- **Keyboard navigation** between tiles, and **Quick Look**
-- **Recent folders**, tabs, and settings that are remembered
-- Light and dark appearance, and classic glossy colours
+- **Keyboard navigation** between tiles, and a quick preview (Quick Look on the Mac)
+- **File operations** from the right-click menu: open, show in the file manager, copy path, rename, move to trash
+- **Recent folders** and settings that are remembered
+
+Alocir for Mac also has window tabs, the system's glass design, and light,
+dark and classic glossy colours.
 
 Alocir for Windows, Linux and older Macs also has:
 
@@ -154,13 +152,16 @@ instead.
 
 ### Usage
 
-1. Launch the app and **choose a folder** (or drop one onto the window, or use **Scan Home Folder**)
-2. The treemap fills the window once scanning completes; the status bar shows the hovered item or current path
-3. **Click** a folder tile to drill down into it
-4. Go back with the **Up** button, the **breadcrumb bar**, **Backspace**/**Escape** or the mouse **back** button
-5. **Right-click** any tile for file operations (open, reveal, copy path, rename, move to trash, open terminal)
+1. Launch the app and **choose a folder**, click **Home** or **Startup Disk**, pick a recent folder, or drop a folder onto the window
+2. Click a tile to select it and see it in the inspector; **double-click** a folder to zoom into it
+3. Go back with the **Up** button, the **breadcrumb bar**, **Backspace** or the mouse **back** button; **Cmd/Ctrl+↑** goes up, **Cmd/Ctrl+Shift+↑** to the top
+4. Move between tiles with the **arrow keys**; **Space** previews, **Return** renames, **Cmd/Ctrl+↓** zooms in, **Cmd/Ctrl+Backspace** moves to the trash
+5. Search with **Cmd/Ctrl+F**; show or hide the inspector with **Cmd/Ctrl+Alt+I**
 6. **Rescan** with the toolbar button, **Cmd/Ctrl+R** or **F5**
-7. Click the **gear icon** to change the color scheme
+7. Click the **gear icon** for the color scheme, nesting depth, labels and recent folders
+
+Settings and recent folders are kept in `~/Library/Application Support/Alocir`
+(macOS), `%APPDATA%\Alocir` (Windows) or `~/.config/alocir` (Linux).
 
 #### Command line
 

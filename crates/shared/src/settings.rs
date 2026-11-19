@@ -18,7 +18,19 @@ pub struct SettingsState {
     pub watch_subfolders: bool,
     /// Why watching subfolders isn't working, if it isn't (set by the app).
     pub watch_status: Option<String>,
+    /// Levels of the map drawn inside each other (1 = flat).
+    pub nesting_depth: usize,
+    /// Names and sizes on tiles.
+    pub show_labels: bool,
+    pub show_inspector: bool,
+    /// How many recent folders there are, shown in the window (set by the app).
+    pub recent_count: usize,
+    /// "Clear Recents" was clicked; the app clears the list and resets this.
+    pub clear_recents: bool,
 }
+
+/// Deepest nesting the depth setting allows.
+pub const MAX_NESTING_DEPTH: usize = 8;
 
 impl Default for SettingsState {
     fn default() -> Self {
@@ -38,6 +50,11 @@ impl SettingsState {
             applied: None,
             watch_subfolders: !cfg!(target_os = "linux"),
             watch_status: None,
+            nesting_depth: 4,
+            show_labels: true,
+            show_inspector: true,
+            recent_count: 0,
+            clear_recents: false,
         }
     }
 
@@ -80,7 +97,8 @@ fn paint_swatch(painter: &egui::Painter, rect: Rect, scheme: ColorScheme) {
             inner.lerp_inside(egui::vec2(x1, y1)),
         )
         .shrink(0.75);
-        painter.rect_filled(tile, tile_radius, theme.color_for_node(name, is_dir));
+        let node = crate::scanner::FileNode::new(name.to_string(), 1, Vec::new(), is_dir);
+        painter.rect_filled(tile, tile_radius, theme.tile_color(&node, None));
     }
 }
 
@@ -165,6 +183,8 @@ pub fn show_settings_window(ctx: &egui::Context, state: &mut SettingsState) {
         .resizable(false)
         .open(&mut open)
         .anchor(Align2::CENTER_CENTER, [0.0, 0.0])
+        .vscroll(true)
+        .max_height((ctx.screen_rect().height() - 90.0).max(160.0))
         .show(ctx, |ui| {
             ui.set_width(320.0);
 
@@ -178,6 +198,35 @@ pub fn show_settings_window(ctx: &egui::Context, state: &mut SettingsState) {
                     ctx.request_repaint();
                 }
             }
+
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new("Map").strong());
+            ui.horizontal(|ui| {
+                ui.label("Nesting depth");
+                ui.add(egui::Slider::new(
+                    &mut state.nesting_depth,
+                    1..=MAX_NESTING_DEPTH,
+                ))
+                .on_hover_text("How many levels of folders are drawn inside each other");
+            });
+            ui.checkbox(&mut state.show_labels, "Show names and sizes on tiles");
+            ui.checkbox(&mut state.show_inspector, "Show the inspector");
+
+            ui.add_space(10.0);
+            ui.label(egui::RichText::new("Recent folders").strong());
+            ui.horizontal(|ui| {
+                ui.weak(match state.recent_count {
+                    0 => "None yet".to_string(),
+                    1 => "1 folder".to_string(),
+                    n => format!("{n} folders"),
+                });
+                if ui
+                    .add_enabled(state.recent_count > 0, egui::Button::new("Clear Recents"))
+                    .clicked()
+                {
+                    state.clear_recents = true;
+                }
+            });
 
             if cfg!(target_os = "linux") {
                 ui.add_space(10.0);
@@ -197,7 +246,7 @@ pub fn show_settings_window(ctx: &egui::Context, state: &mut SettingsState) {
                 ui.label(egui::RichText::new("Alocir").strong());
                 ui.weak(concat!("v", env!("CARGO_PKG_VERSION")));
             });
-            ui.weak("Cross-platform disk space visualizer.");
+            ui.weak("Disk space visualizer for Windows, Linux and older Macs.");
             ui.add_space(4.0);
             // App Review guideline 5.1.1(i): the privacy policy must be
             // reachable from inside the app, not only from the store listing.

@@ -1,3 +1,4 @@
+use crate::kind::FileKind;
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs;
@@ -11,6 +12,30 @@ pub struct FileNode {
     pub size: u64,
     pub children: Vec<FileNode>,
     pub is_dir: bool,
+    /// What the file is, from its extension (`Directory` for directories).
+    /// Fits in the padding after `is_dir`, so it costs no memory.
+    pub kind: FileKind,
+    /// Search marks (see [`crate::search::MATCH`]), so painting can dim
+    /// what doesn't match without a lookup.
+    pub mark: u8,
+}
+
+impl FileNode {
+    pub fn new(name: String, size: u64, children: Vec<FileNode>, is_dir: bool) -> FileNode {
+        let kind = if is_dir {
+            FileKind::Directory
+        } else {
+            FileKind::from_name(&name)
+        };
+        FileNode {
+            name,
+            size,
+            children,
+            is_dir,
+            kind,
+            mark: 0,
+        }
+    }
 }
 
 pub struct ScanProgress {
@@ -178,11 +203,8 @@ impl FileNode {
         defer: Option<&Path>,
     ) -> FileNode {
         let mut root = FileNode::scan_entry(path, path, progress, excluded, ctx, defer)
-            .unwrap_or_else(|| FileNode {
-                name: path.to_string_lossy().to_string(),
-                size: 0,
-                children: Vec::new(),
-                is_dir: true,
+            .unwrap_or_else(|| {
+                FileNode::new(path.to_string_lossy().to_string(), 0, Vec::new(), true)
             });
 
         // Now that everything else is counted, scan what was put off; any
@@ -221,12 +243,8 @@ impl FileNode {
                 {
                     Some(pos) => pos,
                     None => {
-                        self.children.push(FileNode {
-                            name: first.clone(),
-                            size: 0,
-                            children: Vec::new(),
-                            is_dir: true,
-                        });
+                        self.children
+                            .push(FileNode::new(first.clone(), 0, Vec::new(), true));
                         self.children.len() - 1
                     }
                 };
@@ -257,45 +275,25 @@ impl FileNode {
         let meta = match fs::symlink_metadata(path) {
             Ok(m) => m,
             Err(_) => {
-                return Some(FileNode {
-                    name,
-                    size: 0,
-                    children: Vec::new(),
-                    is_dir: false,
-                });
+                return Some(FileNode::new(name, 0, Vec::new(), false));
             }
         };
 
         // Skip symlinks
         if meta.is_symlink() {
-            return Some(FileNode {
-                name,
-                size: 0,
-                children: Vec::new(),
-                is_dir: false,
-            });
+            return Some(FileNode::new(name, 0, Vec::new(), false));
         }
 
         if meta.is_file() {
             let size = progress.file_usage(&meta);
             progress.items_scanned.fetch_add(1, Ordering::Relaxed);
             progress.bytes_scanned.fetch_add(size, Ordering::Relaxed);
-            return Some(FileNode {
-                name,
-                size,
-                children: Vec::new(),
-                is_dir: false,
-            });
+            return Some(FileNode::new(name, size, Vec::new(), false));
         }
 
         // Skip excluded directories.
         if excluded.contains(path) {
-            return Some(FileNode {
-                name,
-                size: 0,
-                children: Vec::new(),
-                is_dir: true,
-            });
+            return Some(FileNode::new(name, 0, Vec::new(), true));
         }
 
         // Put the macOS data volume off until the end (see MACOS_DATA_VOLUME),
@@ -325,12 +323,7 @@ impl FileNode {
         let read_dir = match fs::read_dir(path) {
             Ok(rd) => rd,
             Err(_) => {
-                return Some(FileNode {
-                    name,
-                    size: 0,
-                    children: Vec::new(),
-                    is_dir: true,
-                });
+                return Some(FileNode::new(name, 0, Vec::new(), true));
             }
         };
 
@@ -359,23 +352,23 @@ impl FileNode {
                 Ok(m) if m.is_file() => progress.file_usage(&m),
                 Ok(_) => 0,
                 Err(_) => {
-                    children.push(FileNode {
-                        name: entry.file_name().to_string_lossy().to_string(),
-                        size: 0,
-                        children: Vec::new(),
-                        is_dir: false,
-                    });
+                    children.push(FileNode::new(
+                        entry.file_name().to_string_lossy().to_string(),
+                        0,
+                        Vec::new(),
+                        false,
+                    ));
                     continue;
                 }
             };
             file_count += 1;
             file_bytes += size;
-            children.push(FileNode {
-                name: entry.file_name().to_string_lossy().to_string(),
+            children.push(FileNode::new(
+                entry.file_name().to_string_lossy().to_string(),
                 size,
-                children: Vec::new(),
-                is_dir: false,
-            });
+                Vec::new(),
+                false,
+            ));
         }
         progress
             .items_scanned
@@ -396,12 +389,7 @@ impl FileNode {
         // Sort children by size descending for better treemap layout
         children.sort_unstable_by_key(|c| std::cmp::Reverse(c.size));
 
-        Some(FileNode {
-            name,
-            size: total_size,
-            children,
-            is_dir: true,
-        })
+        Some(FileNode::new(name, total_size, children, true))
     }
 }
 
@@ -464,12 +452,7 @@ mod tests {
 
     #[test]
     fn file_node_construction() {
-        let node = FileNode {
-            name: "test.txt".to_string(),
-            size: 1024,
-            children: Vec::new(),
-            is_dir: false,
-        };
+        let node = FileNode::new("test.txt".to_string(), 1024, Vec::new(), false);
         assert_eq!(node.name, "test.txt");
         assert_eq!(node.size, 1024);
         assert!(!node.is_dir);
@@ -478,24 +461,9 @@ mod tests {
 
     #[test]
     fn file_node_directory_with_children() {
-        let child1 = FileNode {
-            name: "big.bin".to_string(),
-            size: 2000,
-            children: Vec::new(),
-            is_dir: false,
-        };
-        let child2 = FileNode {
-            name: "small.txt".to_string(),
-            size: 100,
-            children: Vec::new(),
-            is_dir: false,
-        };
-        let dir = FileNode {
-            name: "mydir".to_string(),
-            size: 2100,
-            children: vec![child1, child2],
-            is_dir: true,
-        };
+        let child1 = FileNode::new("big.bin".to_string(), 2000, Vec::new(), false);
+        let child2 = FileNode::new("small.txt".to_string(), 100, Vec::new(), false);
+        let dir = FileNode::new("mydir".to_string(), 2100, vec![child1, child2], true);
         assert!(dir.is_dir);
         assert_eq!(dir.children.len(), 2);
         assert_eq!(dir.size, 2100);
@@ -630,29 +598,19 @@ mod tests {
 
     #[test]
     fn graft_inserts_node_and_updates_ancestor_sizes() {
-        let leaf = |name: &str, size| FileNode {
-            name: name.to_string(),
-            size,
-            children: Vec::new(),
-            is_dir: false,
-        };
-        let mut root = FileNode {
-            name: "/".into(),
-            size: 10,
-            children: vec![FileNode {
-                name: "System".into(),
-                size: 10,
-                children: vec![leaf("kernel", 10)],
-                is_dir: true,
-            }],
-            is_dir: true,
-        };
-        let data = FileNode {
-            name: "Data".into(),
-            size: 50,
-            children: vec![leaf(".Spotlight-V100", 50)],
-            is_dir: true,
-        };
+        let leaf = |name: &str, size| FileNode::new(name.to_string(), size, Vec::new(), false);
+        let mut root = FileNode::new(
+            "/".into(),
+            10,
+            vec![FileNode::new(
+                "System".into(),
+                10,
+                vec![leaf("kernel", 10)],
+                true,
+            )],
+            true,
+        );
+        let data = FileNode::new("Data".into(), 50, vec![leaf(".Spotlight-V100", 50)], true);
         root.graft(&["System".into(), "Volumes".into(), "Data".into()], data);
 
         assert_eq!(root.size, 60);
