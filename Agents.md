@@ -1,6 +1,11 @@
 # Alocir
 
-Cross-platform disk space visualizer built with Rust and egui.
+Disk space visualizer in two editions, from this one repository:
+
+- **Alocir for Mac** (`swift/`, version 2.x): native Swift/SwiftUI app for macOS 26 and later, shipped through the Mac App Store.
+- **Alocir for Windows, Linux and older Macs** (`crates/`, version 1.x): Rust and egui, shipped on GitHub Releases, including a notarized macOS build for Macs that can't run macOS 26. Keep that macOS build.
+
+The two have separate version numbers. Most of this file is about the Rust workspace; the Mac edition is under "Native macOS app (2.0)" below. The public pages are on opensf.foundation (`~/Projects/opensf`: `src/pages/products/alocir/`, and the Alocir section of `src/pages/privacy.astro`); keep them, `README.md` and `PRIVACY.md` in step when either edition changes what it stores or does.
 
 ## Architecture
 
@@ -80,6 +85,31 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
   libxkbcommon-dev libgtk-3-dev
 ```
 
+## Native macOS app (2.0, `swift/`)
+
+From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite with Liquid Glass. It runs on macOS 26 and later (Apple Silicon and Intel; 26 is the last macOS for Intel Macs) and is built with the macOS 27 SDK, so anything newer than macOS 26 needs an `if #available` check; the compiler enforces this. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows, Linux and Macs older than macOS 26; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
+
+| Path | Purpose |
+|------|---------|
+| `swift/Package.swift` | `AlocirCore` library, `alocir-scan` command, tests (Swift 6, strict concurrency, no package dependencies) |
+| `swift/Sources/AlocirCore/` | `DirectoryReader` (`getattrlistbulk`, `readdir` fallback), `DiskScanner`, `FileNode`, `LiveTree` + `FSEventsWatcher` (live reconciling, ported from `app.rs`), `Treemap` (nested squarify, hit testing, arrow-key moves), `Search`, `FolderSummary`, `Formatting` |
+| `swift/Alocir.xcodeproj` | The app target. `App/` is a synchronized folder: every Swift file in it compiles |
+| `swift/App/Model/` | `Session` (one per window: phase, navigation, file actions), `AppSettings`, `RecentFolders` (security-scoped bookmarks), `Palette` |
+| `swift/App/Views/` | Start, scanning, map (`TreemapCanvas` draws with one `Canvas`), inspector, settings, context menu and rename sheet |
+| `swift/App/Support/` | `DemoData` and `ScreenshotMode` (`Alocir -screenshot <scene>`, used by CI) |
+| `swift/scripts/` | `ci.sh`, `compare-totals.sh`, `bench.sh`, `screenshots.sh`, `archive.sh` |
+
+Rules that carry over: sizes are disk usage, each directory and hard-linked file is counted once, truncate by `Character`, no third-party names, no private APIs, no network. Before changing the scanner or layout, run `swift/scripts/bench.sh ~` and compare with the Rust scanner.
+
+```bash
+cd swift
+swift build -c release && swift test         # engine and tests
+./scripts/compare-totals.sh                  # Swift and Rust totals must match
+./scripts/bench.sh --runs 5 ~                # Swift vs Rust timings and memory
+open Alocir.xcodeproj                         # the app
+BUILD_NUMBER=32 ./scripts/archive.sh          # store package, signed, not uploaded
+```
+
 ## CI/CD
 
 `.github/workflows/ci.yml`:
@@ -87,6 +117,8 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
 - **lint** (Linux): `cargo fmt --all --check` and clippy with `-D warnings`.
 - **build**: builds and tests on Linux x86_64, Windows x86_64 and macOS, and builds a universal macOS `.app`. On pushes to `main` with signing secrets set, the app is signed with Developer ID and notarized; otherwise it is ad-hoc signed.
 - **release**: on pushes to `main`, creates a GitHub Release tagged with the version from `crates/alocir/Cargo.toml`, with zip artifacts.
+- **swift** (`xcode-27` runner): `swift/scripts/ci.sh` builds and tests the Swift engine, checks its totals against the Rust scanner, builds the universal app with the macOS 27 SDK (failing without both arm64 and x86_64) and runs the private-API check; then `screenshots.sh` captures every screen with demo data as the `screenshots` artifact.
+- **macos-26** (`macos-26` and `macos-26-intel` runners): runs the engine tests and launches every screen of the app built by the **swift** job, on the oldest supported macOS, on both architectures.
 - **app-store**: manual runs only (`workflow_dispatch`). Builds the sandboxed store package and uploads it to App Store Connect. Skipped when its secrets are missing.
 
 Secrets: `MACOS_CERTIFICATE_P12`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY` and `APPLE_API_KEY_P8`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID` for notarized releases; the `MAS_*` secrets listed in `docs/mac-app-store.md` for the store job. Bump the version in `crates/alocir/Cargo.toml` before a release, or the release with that tag is updated in place.
@@ -104,18 +136,20 @@ This project is developed with the assistance of [Claude Code](https://docs.anth
 ## Roadmap
 
 ### Now
-- Stabilize cross-platform builds and release packaging
+- Alocir for Mac 2.0.0 in App Review; once approved, replace the "coming soon" labels on opensf.foundation with the App Store link
 - Bug fixes for filesystem watcher edge cases
 
-### Next
-- Mac App Store release (see `docs/mac-app-store.md`)
+### Done in Alocir for Mac (2.0), not in the Rust edition
+- Nested treemap, search and filter, persistent settings and recent folders, keyboard navigation between tiles
+
+### Next (Rust edition)
 - Scan progress bar (percentage-based)
 - Persistent settings (remember last color scheme, window size)
 - Keyboard navigation between treemap tiles (shortcuts for up and rescan exist)
 - Search / filter files by name or extension
 
 ### Future
-- Nested treemap: draw subfolders' contents inside their tiles instead of one level at a time
+- Nested treemap in the Rust edition
 - Duplicate file detection
 - Disk usage trends over time
 - Export reports (CSV / HTML)

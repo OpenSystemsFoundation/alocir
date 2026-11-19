@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AlocirCore",
-    platforms: [.macOS("27.0")],
+    platforms: [.macOS("26.0")],
     products: [
         .library(name: "AlocirCore", targets: ["AlocirCore"]),
         .executable(name: "alocir-scan", targets: ["alocir-scan"]),

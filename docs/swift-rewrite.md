@@ -12,7 +12,7 @@ Swift app that:
 - puts performance first: scan speed, memory per file, and a treemap that
   stays at display refresh rate with millions of files scanned;
 - looks and behaves like a first-party macOS app, using the system glass
-  design (Liquid Glass), and requires macOS 27;
+  design (Liquid Glass), and runs on macOS 26 and later;
 - adds the four features the Rust app lacks: a **nested treemap**, **search
   and filter**, **persistent settings and recent folders**, and **keyboard
   navigation between tiles**;
@@ -117,7 +117,7 @@ runs it without Xcode's build system.
 | Item | Value |
 |---|---|
 | Build SDK | macOS 27 (Xcode 27), the newest |
-| Deployment target | macOS 27.0. No availability checks for older systems |
+| Deployment target | macOS 26.0. Guard anything newer with `if #available` (the compiler enforces it) |
 | Language | Swift 6 language mode, complete strict concurrency |
 | UI | SwiftUI. AppKit only where SwiftUI has no equivalent |
 | State | `@Observable` models; no `ObservableObject`, no Combine |
@@ -125,9 +125,9 @@ runs it without Xcode's build system.
 | Tests | Swift Testing (`@Test`, `#expect`) |
 | Bundle ID | `com.jeffkroon.alocir` (permanent; the store record uses it) |
 | Team ID | `45X6674984` |
-| Version | 2.0.0. `CFBundleVersion` must exceed 24, the last upload |
+| Version | 2.0.0. `CFBundleVersion` must exceed 31, the last upload (1.0.0) |
 | Category | `public.app-category.utilities` |
-| Architectures | Universal (arm64 + x86_64) if the SDK still allows it |
+| Architectures | Universal (arm64 + x86_64); `ci.sh` fails without both |
 
 ## 6. Engine (`AlocirCore`)
 
@@ -516,6 +516,6 @@ Carry on with the default; list these in the PR.
 | Question | Default taken |
 |---|---|
 | Does 2.0 replace the Rust app on the store under the same record? | Yes |
-| Minimum macOS 27, dropping older systems the Rust app supported (11+)? | Yes; decided by the maintainer on 2026-11-16 |
+| Minimum macOS? | 26 (decided by the maintainer on 2026-11-17, replacing 27 from 2026-11-16): nothing used needs 27, and 26 roughly triples the audience. Older systems the Rust app supported (11+) are dropped |
 | Keep a non-sandboxed Developer ID build on GitHub Releases? | No; one sandboxed build |
-| Keep Intel support? | Yes, if the SDK allows |
+| Keep Intel support? | Yes: universal, for Intel Macs on macOS 26 |

@@ -1,0 +1,31 @@
+{
+  "platform": "macos",
+  "app_name": "Alocir",
+  "bundle_id": "com.jeffkroon.alocir",
+  "sku": "alocir",
+  "primary_locale": "en-US",
+  "project": "swift/Alocir.xcodeproj",
+  "scheme": "Alocir",
+  "version": "2.0.0",
+  "build_number": "project",
+  "copyright": "2026 Jeff Kroon",
+  "release_type": "AFTER_APPROVAL",
+  "localizations": {
+    "en-US": {
+      "name": "Alocir",
+      "subtitle": "See what fills your disk",
+      "promotional_text": "Find out what is taking up your disk space in seconds. Scan any folder, explore it as an interactive map, and clean up straight from the map.",
+      "description": "Alocir shows you what is taking up space on your Mac. Choose a folder, or your whole startup disk, and Alocir draws it as a treemap: every file and folder is a rectangle sized by the space it uses, with subfolders drawn inside their folders, so the biggest items stand out at a glance.\n\nEXPLORE\n• Click a folder to zoom into it; go back with the breadcrumb bar or the Delete key.\n• Move between tiles with the arrow keys, and press Space to preview a file with Quick Look.\n• The inspector shows the selected item's size, its share of the folder and what kinds of files fill it.\n• Sizes are the space files actually occupy on disk, so sparse files don't inflate totals and hard-linked files are counted once.\n\nFIND\n• Search by name, by extension (.mov) or by size (>100mb), and the map highlights every match.\n\nCLEAN UP\n• Right-click any item to open it, show it in Finder, copy its path, rename it or move it to the Trash.\n• Changes on disk show up live: files you add, delete, rename or move while Alocir is open update the map without a rescan.\n\nFAST\n• Scans run in parallel on all your Mac's cores, so even a whole disk is quick to map, and the map stays smooth with millions of files.\n\nMAKE IT YOURS\n• Light and dark appearance, a nesting depth from one to eight levels, labels on or off, and classic colors with glossy tiles.\n• Alocir remembers your recent folders and settings.\n\nPRIVATE BY DESIGN\n• Alocir has no network access, no accounts, no ads and no tracking. It only reads the folders you choose, and only changes files when you ask it to.\n\nTo scan folders macOS protects, such as your whole disk, you can grant Alocir Full Disk Access in System Settings > Privacy & Security.\n\nAlocir is free and open source.",
+      "keywords": "disk,space,storage,usage,analyzer,treemap,folder,size,files,visualizer,cleanup,large files,free up",
+      "support_url": "https://opensf.foundation/products/alocir/support/",
+      "marketing_url": "https://opensf.foundation/products/alocir/",
+      "privacy_policy_url": "https://opensf.foundation/privacy/"
+    }
+  },
+  "review": {
+    "notes": "Thank you for reviewing Alocir.\n\nCONCEPT AND BUSINESS MODEL\nAlocir is a disk space visualizer. The user chooses a folder (or the startup disk) and Alocir draws its contents as a nested treemap: rectangles sized by the disk space each file and folder uses, so large items are easy to find and clean up. The app is free and open source. There are no in-app purchases, subscriptions, ads or accounts.\n\nPURPOSE AND AUDIENCE\nFor any Mac user who wants to find out what is filling their disk. General audience.\n\nHOW TO TEST (no login or demo account needed)\n1. Launch Alocir and click \"Choose Folder…\" (Cmd+O), \"Home\" or \"Startup Disk\". Each opens the standard open panel; pick a folder such as Downloads or Applications. You can also drag a folder onto the window.\n2. The scan takes a few seconds, then the treemap appears. Click a tile to select it; the inspector on the right shows its size and contents.\n3. Double-click a folder tile to zoom into it. Go back with the breadcrumb bar or the Delete key. Arrow keys move between tiles; Space opens Quick Look.\n4. Type in the search field in the toolbar, e.g. \".pdf\" or \">100mb\", to highlight matching items.\n5. Right-click any tile: Open, Show in Finder, Quick Look, Copy Path, Rename… and Move to Trash.\n6. Open Settings (Cmd+,): appearance, nesting depth, labels, classic colors and recent folders. The Privacy Policy and Support links are there too.\n7. Recently scanned folders are listed on the start screen and reopen without the open panel.\n\nFILE ACCESS AND SANDBOX (2.4.5(i), 5.1.1)\n- Sandboxed, with only com.apple.security.files.user-selected.read-write and com.apple.security.files.bookmarks.app-scope.\n- Reads only folders the user picks in the open panel or drags onto the window. App-scoped security bookmarks let the recent folders list reopen them; the user can remove them in Settings.\n- Writes only when the user chooses Rename or Move to Trash. Move to Trash uses NSFileManager trashItemAtURL, so items can be restored.\n- Uses FSEvents to update the map while the app is open.\n- Full Disk Access is optional and never requested programmatically; the start screen only mentions it for users who want to scan a whole disk.\n\nMAC APP STORE REQUIREMENTS (2.4.5)\n- Single self-contained app bundle; installs nothing elsewhere; English only.\n- No login items, helpers or background processes; nothing keeps running after quitting.\n- No license screen, copy protection, own updater or downloaded code. Updates only through the Mac App Store.\n- No root privileges, setuid or private APIs. Built with the macOS 27 SDK using only system frameworks and no third-party code.\n\nTESTED ON\nMacBook Pro with Apple M4, macOS 27.0.1. The app is a universal binary (Apple silicon and Intel) and requires macOS 26 or later.\n\nEXTERNAL SERVICES\nNone. The app makes no network connections and uses no third-party SDKs or services. The links in Settings open our website in the user's browser.\n\nREGIONAL DIFFERENCES\nNone. The app works the same in all regions.\n\nPRIVACY\nNo data collection, analytics or tracking. Privacy policy: https://opensf.foundation/privacy/ (also linked in Settings).\n\nENCRYPTION\nNo encryption (ITSAppUsesNonExemptEncryption = NO).\n\nIf anything is unclear, please contact us using the details in this submission."
+  },
+  "screenshots": {
+    "scenes": []
+  }
+}

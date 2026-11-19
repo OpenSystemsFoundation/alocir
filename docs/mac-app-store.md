@@ -9,7 +9,7 @@ and must leave that one unchanged.
 Team ID: `45X6674984`. Bundle ID: `com.jeffkroon.alocir` (registered, and
 permanent now that the App Store Connect app record uses it).
 
-## Status (2026-11-15)
+## Status (2026-11-19)
 
 | Step | State |
 |---|---|
@@ -19,7 +19,39 @@ permanent now that the App Store Connect app record uses it).
 | B5: sandbox testing | ⏳ Next |
 | B6: CI secrets | ⏳ Not set yet |
 | B7–B9: listing, review notes, submission | ✅ 1.0.0 (build 24) submitted 2026-11-15 |
-| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Needs a new build uploaded and resubmitted. |
+| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Not resubmitted: the store moved to the Swift app instead. |
+| 2.0.0 (Swift app) | ⏳ Build 33 submitted 2026-11-19, waiting for review. The App Store Connect version record that held 1.0.0 was renamed to 2.0.0 (an app with no release can only have one version in progress), and the 1.0.0 submission was cancelled. Listing, review notes and screenshots are in `appstore/` (`ios-release` skill: `asc.py status`). |
+
+## 2.0.0: the native Swift app
+
+From 2.0.0 the store app is the SwiftUI app in `swift/` (plan:
+`docs/swift-rewrite.md`), built with Xcode 27 (macOS 27 SDK) for macOS 26
+and later. Same bundle ID, team, certificates and profile as above; the
+version is 2.0.0. It is universal (arm64 and x86_64): macOS 26 is the last
+macOS for Intel Macs, and the macOS 27 SDK still builds Intel code for a
+macOS 26 target. Build numbers must be higher than every earlier upload,
+whatever the version: 1.0.0 went up as builds 30 and 31, so 2.0.0 starts at
+32 (`CURRENT_PROJECT_VERSION`). The Rust store path below stays as it is
+until 2.0.0 replaces it.
+
+1. On the release Mac, with the signing material in `~/.alocir-signing/`:
+   `BUILD_NUMBER=32 swift/scripts/archive.sh`. It archives with the
+   "Apple Distribution" certificate and the "Alocir Mac App Store" profile,
+   exports a package signed with "3rd Party Mac Developer Installer",
+   checks the signature and sandbox, and runs `scripts/check-private-apis.sh`.
+   It never uploads.
+2. Test the archived app (`swift/build/archive/Alocir.xcarchive`) against the
+   manual list in the 2.0.0 pull request.
+3. Upload the package (`asc.py upload --pkg swift/build/archive/Alocir.pkg`
+   from the repo root, with the `ios-release` skill, or Transporter), then
+   update `appstore/release.json` (listing, "What's New" once a version is
+   live, review notes) and push it with `asc.py metadata`. Screenshots come
+   from `swift/scripts/screenshots.sh` (2560×1600 window captures of the demo
+   scenes) and go up with `asc.py screenshots-upload`.
+
+The app icon is the flat `assets/logo.svg` rendered to PNGs. A layered icon
+made in Icon Composer, which macOS 26 and later show with glass effects, is still to
+do.
 
 ### Private APIs (guideline 2.5.1)
 

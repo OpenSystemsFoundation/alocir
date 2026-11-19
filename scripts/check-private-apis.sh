@@ -28,7 +28,10 @@ set -euo pipefail
 #   _swift_FORCE_LOAD_$_swift<Module> autolink symbols.
 # - objc_empty_cache: libobjc's ABI symbol that every compiled class's
 #   method cache points at.
-ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_|swift|objc_empty_cache$)'
+# - availability_version_check: what `if #available` compiles to.
+# - os_log_*, os_signpost_*: what the public os_log/Logger and signpost
+#   APIs compile to.
+ALLOW_SYMBOLS='^__(Block_|NSConcrete|NSGet(Argc|Argv|Environ|ExecutablePath)$|Unwind_|dispatch_|dyld_|exit$|tlv_|_|swift|objc_empty_cache$|availability_version_check$|os_log_|os_signpost_)'
 
 # Undocumented selectors and functions without a telltale underscore.
 DENY_SELECTORS='^(busyButClickableCursor|CGSMainConnectionID|CGSSetWindowBackgroundBlurRadius)$'
@@ -76,14 +79,39 @@ for binary in "${binaries[@]}"; do
         found=1
     done < <(otool -L "$binary" | awk 'NR > 1 {print $1}' | grep '/PrivateFrameworks/' | sort -u || true)
 
+    # Selector-shaped names (`_helpCursor`, `_wantsKeyDownForEvent:`) only
+    # count in Objective-C selector names (__objc_methname); private
+    # function names looked up with dlsym (CGS*, SLS*, CPS*, the deny list)
+    # count in C strings (__cstring) too.
+    section_strings() {
+        for arch in $(lipo -archs "$binary"); do
+            otool -arch "$arch" -X -v -s __TEXT "$1" "$binary" 2>/dev/null \
+                | sed -E 's/^[0-9a-f]+[[:space:]]+//'
+        done | sort -u
+    }
+    # Instance variable names share __objc_methname with selectors; a Swift
+    # class's stored properties appear there (`_isSearching`), so leave out
+    # every name `otool -ov` lists as an ivar (the `name` after `offset`).
+    ivar_names() {
+        for arch in $(lipo -archs "$binary"); do
+            otool -arch "$arch" -ov "$binary" 2>/dev/null \
+                | awk '$1 == "offset" { ivar = 1; next } ivar && $1 == "name" { print $NF } { ivar = 0 }'
+        done | sort -u
+    }
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
-        report "private function or selector named in the binary: $name"
+        report "private selector named in the binary: $name"
         found=1
-    done < <(strings -a "$binary" | sort -u | grep -E \
+    done < <(comm -23 <(section_strings __objc_methname) <(ivar_names) | grep -E \
         -e '^_[a-z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*(:([A-Za-z0-9]+:)*)?$' \
-        -e '^(CGS|SLS|CPS)[A-Z][A-Za-z]+$' \
         -e "$DENY_SELECTORS" | awk 'length >= 8' || true)
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        report "private function named in the binary: $name"
+        found=1
+    done < <(section_strings __cstring | grep -E \
+        -e '^(CGS|SLS|CPS)[A-Z][A-Za-z]+$' \
+        -e "$DENY_SELECTORS" || true)
 
     if [[ $found -eq 0 ]]; then
         echo "    none found"
