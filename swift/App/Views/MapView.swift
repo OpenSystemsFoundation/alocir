@@ -2,8 +2,8 @@ import AlocirCore
 import QuickLook
 import SwiftUI
 
-/// The treemap screen: the map fills the window edge to edge and runs under
-/// the toolbar, with a floating status capsule and the inspector.
+/// The treemap screen: the map and the inspector side by side under one
+/// toolbar, with the status bar across the bottom of the window.
 struct MapView: View {
     @Bindable var session: Session
     let tree: LiveTree
@@ -13,10 +13,23 @@ struct MapView: View {
 
     var body: some View {
         @Bindable var settings = settings
-        // The status bar sits below the map, not over it, so it never covers
-        // tiles.
+        // One layout under one toolbar, as in a browser window: the map and
+        // the inspector side by side below the toolbar, and the status bar
+        // across the whole window below both. (The system inspector column
+        // runs to the top of the window with its own toolbar background, so
+        // the search field sat across the seam, and the status bar stopped
+        // at the inspector.)
         VStack(spacing: 0) {
-            TreemapArea(session: session, tree: tree)
+            HStack(spacing: 0) {
+                TreemapArea(session: session, tree: tree)
+                if settings.showInspector {
+                    Divider()
+                    InspectorView(session: session, tree: tree)
+                        .frame(width: 290)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.smooth(duration: 0.25), value: settings.showInspector)
             StatusBar(session: session, tree: tree)
         }
             .navigationTitle(tree.focus === tree.root ? displayName(of: tree.root) : tree.focus.name)
@@ -24,10 +37,6 @@ struct MapView: View {
             .toolbar { toolbar }
             .searchable(text: $session.searchText, placement: .toolbar, prompt: Text("Name, .ext, >100mb"))
             .searchFocused($searchFocused)
-            .inspector(isPresented: $settings.showInspector) {
-                InspectorView(session: session, tree: tree)
-                    .inspectorColumnWidth(min: 250, ideal: 290, max: 420)
-            }
             .quickLookPreview($session.quickLookURL)
             .sheet(item: $session.renaming) { node in
                 RenameSheet(session: session, node: node)

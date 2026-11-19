@@ -35,7 +35,7 @@ struct InspectorView: View {
             }
             .padding(16)
         }
-        .scrollEdgeEffectStyle(.soft, for: .top)
+        .scrollEdgeEffectStyle(.soft, for: .vertical)
         .task(id: SummaryKey(version: tree.version, focus: ObjectIdentifier(tree.focus))) {
             summary = FolderSummary(of: tree.focus)
         }
