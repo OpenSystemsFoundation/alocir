@@ -9,7 +9,7 @@ and must leave that one unchanged.
 Team ID: `45X6674984`. Bundle ID: `com.jeffkroon.alocir` (registered, and
 permanent now that the App Store Connect app record uses it).
 
-## Status (2026-11-15)
+## Status (2026-11-19)
 
 | Step | State |
 |---|---|
@@ -19,7 +19,8 @@ permanent now that the App Store Connect app record uses it).
 | B5: sandbox testing | ⏳ Next |
 | B6: CI secrets | ⏳ Not set yet |
 | B7–B9: listing, review notes, submission | ✅ 1.0.0 (build 24) submitted 2026-11-15 |
-| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Needs a new build uploaded and resubmitted. |
+| Review of 1.0.0 | ❌ Rejected 2026-11-16 by Apple's automated scan: non-public API `_CGSSetWindowBackgroundBlurRadius`, from winit. Fixed by vendoring winit without its private APIs (`vendor/winit/ALOCIR.md`). Not resubmitted: the store moved to the Swift app instead. |
+| 2.0.0 (Swift app) | ⏳ Build 33 submitted 2026-11-19, waiting for review. The App Store Connect version record that held 1.0.0 was renamed to 2.0.0 (an app with no release can only have one version in progress), and the 1.0.0 submission was cancelled. Listing, review notes and screenshots are in `appstore/` (`ios-release` skill: `asc.py status`). |
 
 ## 2.0.0: the native Swift app
 
@@ -41,9 +42,12 @@ until 2.0.0 replaces it.
    It never uploads.
 2. Test the archived app (`swift/build/archive/Alocir.xcarchive`) against the
    manual list in the 2.0.0 pull request.
-3. Upload the package yourself (Transporter or `xcrun altool --upload-app`),
-   then update the listing: new screenshots (the CI `screenshots` artifact is
-   a starting point), "What's New", and the review notes.
+3. Upload the package (`asc.py upload --pkg swift/build/archive/Alocir.pkg`
+   from the repo root, with the `ios-release` skill, or Transporter), then
+   update `appstore/release.json` (listing, "What's New" once a version is
+   live, review notes) and push it with `asc.py metadata`. Screenshots come
+   from `swift/scripts/screenshots.sh` (2560×1600 window captures of the demo
+   scenes) and go up with `asc.py screenshots-upload`.
 
 The app icon is the flat `assets/logo.svg` rendered to PNGs. A layered icon
 made in Icon Composer, which macOS 26 and later show with glass effects, is still to

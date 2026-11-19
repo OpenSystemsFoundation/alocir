@@ -1,6 +1,11 @@
 # Alocir
 
-Cross-platform disk space visualizer built with Rust and egui.
+Disk space visualizer in two editions, from this one repository:
+
+- **Alocir for Mac** (`swift/`, version 2.x): native Swift/SwiftUI app for macOS 26 and later, shipped through the Mac App Store.
+- **Alocir for Windows, Linux and older Macs** (`crates/`, version 1.x): Rust and egui, shipped on GitHub Releases, including a notarized macOS build for Macs that can't run macOS 26. Keep that macOS build.
+
+The two have separate version numbers. Most of this file is about the Rust workspace; the Mac edition is under "Native macOS app (2.0)" below. The public pages are on opensf.foundation (`~/Projects/opensf`: `src/pages/products/alocir/`, and the Alocir section of `src/pages/privacy.astro`); keep them, `README.md` and `PRIVACY.md` in step when either edition changes what it stores or does.
 
 ## Architecture
 
@@ -82,7 +87,7 @@ sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev 
 
 ## Native macOS app (2.0, `swift/`)
 
-From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite with Liquid Glass. It runs on macOS 26 and later (Apple Silicon and Intel; 26 is the last macOS for Intel Macs) and is built with the macOS 27 SDK, so anything newer than macOS 26 needs an `if #available` check; the compiler enforces this. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows and Linux; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
+From 2.0.0 the Mac App Store app is a native Swift/SwiftUI rewrite with Liquid Glass. It runs on macOS 26 and later (Apple Silicon and Intel; 26 is the last macOS for Intel Macs) and is built with the macOS 27 SDK, so anything newer than macOS 26 needs an `if #available` check; the compiler enforces this. The plan is `docs/swift-rewrite.md`. The Rust app in `crates/` keeps shipping for Windows, Linux and Macs older than macOS 26; don't delete or restructure `crates/`, `vendor/` or the Rust CI jobs.
 
 | Path | Purpose |
 |------|---------|
@@ -131,18 +136,20 @@ This project is developed with the assistance of [Claude Code](https://docs.anth
 ## Roadmap
 
 ### Now
-- Stabilize cross-platform builds and release packaging
+- Alocir for Mac 2.0.0 in App Review; once approved, replace the "coming soon" labels on opensf.foundation with the App Store link
 - Bug fixes for filesystem watcher edge cases
 
-### Next
-- Mac App Store release (see `docs/mac-app-store.md`)
+### Done in Alocir for Mac (2.0), not in the Rust edition
+- Nested treemap, search and filter, persistent settings and recent folders, keyboard navigation between tiles
+
+### Next (Rust edition)
 - Scan progress bar (percentage-based)
 - Persistent settings (remember last color scheme, window size)
 - Keyboard navigation between treemap tiles (shortcuts for up and rescan exist)
 - Search / filter files by name or extension
 
 ### Future
-- Nested treemap: draw subfolders' contents inside their tiles instead of one level at a time
+- Nested treemap in the Rust edition
 - Duplicate file detection
 - Disk usage trends over time
 - Export reports (CSV / HTML)
